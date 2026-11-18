@@ -28,11 +28,8 @@ T["NVIM-FS-01 uses native autoread or the supported checktime fallback"] = funct
     local path = helpers.canonical_path(helpers.fixture_project(child) .. "/checktime-fallback.txt")
     vim.fn.writefile({ "before" }, path)
     child.lua(([[vim.cmd.edit(%s)]]):format(vim.inspect(path)))
-    helpers.wait_until(
-      child,
-      ([[vim.api.nvim_buf_get_name(0) == %s and vim.api.nvim_get_current_line() == "before"]]):format(vim.inspect(path)),
-      "checktime fixture"
-    )
+    helpers.wait_until(child, "vim.api.nvim_get_current_line() == 'before'", "checktime fixture")
+    assert.equals("checktime-fallback.txt", child.lua_get "vim.fn.expand('%:t')")
 
     local buffer_state = child.lua_get [[{
       autoread = vim.bo.autoread == true,
@@ -69,11 +66,8 @@ T["NVIM-FS-01 uses native autoread or the supported checktime fallback"] = funct
   local path = helpers.canonical_path(helpers.fixture_project(child) .. "/native-autoread.txt")
   vim.fn.writefile({ "before" }, path)
   child.lua(([[vim.cmd.edit(%s)]]):format(vim.inspect(path)))
-  helpers.wait_until(
-    child,
-    ([[vim.api.nvim_buf_get_name(0) == %s and vim.api.nvim_get_current_line() == "before"]]):format(vim.inspect(path)),
-    "native autoread fixture"
-  )
+  helpers.wait_until(child, "vim.api.nvim_get_current_line() == 'before'", "native autoread fixture")
+  assert.equals("native-autoread.txt", child.lua_get "vim.fn.expand('%:t')")
 
   vim.fn.writefile({ "after" }, path)
   helpers.wait_until(child, "vim.api.nvim_get_current_line() == 'after'", "native autoread file change")
