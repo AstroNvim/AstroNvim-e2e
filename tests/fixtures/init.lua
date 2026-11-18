@@ -9,6 +9,13 @@ local lazy_path = required_env "ASTRONVIM_TEST_LAZY_PATH"
 local plugin_root = required_env "ASTRONVIM_TEST_PLUGIN_ROOT"
 local lockfile = required_env "ASTRONVIM_TEST_LOCKFILE"
 
+_G.astronvim_test_autocmd_options = function(bufnr, options)
+  options = options or {}
+  local key = vim.fn.has "nvim-0.13" == 1 and "buf" or "buffer"
+  options[key] = bufnr
+  return options
+end
+
 local events = { lazy_done = false, vim_enter = false }
 vim.g.astronvim_test_ready = false
 vim.g.astronvim_test_error_notifications = {}

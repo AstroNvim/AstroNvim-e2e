@@ -186,7 +186,7 @@ T["NEO-02 leaves file buffers alone and loads Neo-tree for an entered directory"
 
   local before_directory = child.lua_get [[(function()
     vim.cmd.edit(vim.fn.fnameescape(vim.fn.getcwd() .. "/plain.txt"))
-    vim.api.nvim_exec_autocmds("BufEnter", { buf = vim.api.nvim_get_current_buf() })
+    vim.api.nvim_exec_autocmds("BufEnter", astronvim_test_autocmd_options(vim.api.nvim_get_current_buf()))
     return not vim.tbl_contains(
       vim.tbl_map(function(winid) return vim.bo[vim.api.nvim_win_get_buf(winid)].filetype end, vim.api.nvim_list_wins()),
       "neo-tree"
@@ -198,7 +198,7 @@ T["NEO-02 leaves file buffers alone and loads Neo-tree for an entered directory"
     local directory_buffer = vim.api.nvim_create_buf(true, false)
     vim.api.nvim_buf_set_name(directory_buffer, vim.fn.getcwd())
     vim.api.nvim_win_set_buf(0, directory_buffer)
-    vim.api.nvim_exec_autocmds("BufEnter", { buf = directory_buffer })
+    vim.api.nvim_exec_autocmds("BufEnter", astronvim_test_autocmd_options(directory_buffer))
   ]]
   helpers.wait_until(child, "vim.fn.exists(':Neotree') == 2", "Neo-tree directory startup")
   assert.equals(2, child.lua_get "vim.fn.exists(':Neotree')")

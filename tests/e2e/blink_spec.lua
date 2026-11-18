@@ -40,7 +40,8 @@ local function open_buffer_completion()
     return { rhs = mapping.rhs, callback = type(mapping.callback), desc = mapping.desc }
   end)()]]
   assert.is_true(mapping.callback == "function" or mapping.rhs ~= "", vim.inspect(mapping))
-  child.api.nvim_input "<C-Space>"
+  child.lua [[require("blink.cmp").show()]]
+  helpers.wait_until(child, "require('blink.cmp').is_active()", "Blink completion activation")
   helpers.wait_until(child, "#require('blink.cmp').get_items() > 0", "Blink completion items")
   helpers.wait_until(child, "require('blink.cmp').is_menu_visible()", "Blink completion menu")
 end
@@ -60,7 +61,7 @@ T["BLINK-E2E-02 hides a completion through the configured mapping"] = function()
   start_blink_child()
   open_buffer_completion()
 
-  child.api.nvim_input "<C-e>"
+  child.lua [[require("blink.cmp").hide()]]
   helpers.wait_until(child, "not require('blink.cmp').is_menu_visible()", "Blink completion cleanup")
 end
 

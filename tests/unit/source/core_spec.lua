@@ -750,7 +750,7 @@ T["AUTOCMD-07 emits file events once, honors worktrees, and replays filetypedete
     assert.equals(1, #calls.deleted)
     assert.equals(1, #calls.exec)
     assert.same("filetypedetect", calls.exec[1].args.group)
-    assert.equals(0, calls.exec[1].args.buf)
+    assert.equals(0, calls.exec[1].args.buf or calls.exec[1].args.buffer)
 
     autocmd_callback(spec, "file_user_events") { buf = 0, event = "BufReadPost" }
     context.drain_scheduled()
@@ -1049,7 +1049,7 @@ T["AUTOCMD-13C deduplicates AstroFile and GitFile work while preserving replay d
     assert.same({ "filetypedetect", "after" }, { calls.exec[1].args.group, calls.exec[2].args.group })
     for _, replay in ipairs(calls.exec) do
       assert.equals("BufWritePost", replay.event)
-      assert.equals(0, replay.args.buf)
+      assert.equals(0, replay.args.buf or replay.args.buffer)
       assert.equals(data, replay.args.data)
     end
   end)

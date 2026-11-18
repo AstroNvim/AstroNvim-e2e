@@ -62,11 +62,13 @@ T["DIAGNOSTICS-01 renders fixed diagnostics in the statusline and statuscolumn"]
     vim.g.astronvim_test_diagnostic_bufnr = bufnr
     vim.g.astronvim_test_diagnostic_namespace = namespace
     vim.g.astronvim_test_diagnostics_changed = false
-    vim.api.nvim_create_autocmd("DiagnosticChanged", {
-      buf = bufnr,
-      once = true,
-      callback = function() vim.g.astronvim_test_diagnostics_changed = true end,
-    })
+    vim.api.nvim_create_autocmd(
+      "DiagnosticChanged",
+      astronvim_test_autocmd_options(bufnr, {
+        once = true,
+        callback = function() vim.g.astronvim_test_diagnostics_changed = true end,
+      })
+    )
     vim.diagnostic.set(namespace, bufnr, {
       { lnum = 0, col = 0, end_col = 5, severity = vim.diagnostic.severity.ERROR, message = "fixed error" },
       { lnum = 1, col = 0, end_col = 7, severity = vim.diagnostic.severity.WARN, message = "fixed warning" },

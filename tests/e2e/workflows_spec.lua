@@ -223,11 +223,11 @@ T["INDENT-02 owns GuessIndent metadata and hands events to the matching buffer o
     local after_read = #calls
     new_file_callback { buf = new_file_buffer }
     local after_registration = #calls
-    vim.api.nvim_exec_autocmds("BufWritePost", { buf = other_buffer })
+    vim.api.nvim_exec_autocmds("BufWritePost", astronvim_test_autocmd_options(other_buffer))
     local after_other_write = #calls
-    vim.api.nvim_exec_autocmds("BufWritePost", { buf = new_file_buffer })
+    vim.api.nvim_exec_autocmds("BufWritePost", astronvim_test_autocmd_options(new_file_buffer))
     local after_first_write = #calls
-    vim.api.nvim_exec_autocmds("BufWritePost", { buf = new_file_buffer })
+    vim.api.nvim_exec_autocmds("BufWritePost", astronvim_test_autocmd_options(new_file_buffer))
     local after_second_write = #calls
     return {
       calls = calls,

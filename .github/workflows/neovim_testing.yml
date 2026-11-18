@@ -167,7 +167,11 @@ jobs:
           Invoke-WebRequest -Uri $releaseUrl -OutFile $archive
           Expand-Archive -Path $archive -DestinationPath $env:RUNNER_TEMP -Force
           $nvimPath = Join-Path $env:RUNNER_TEMP "nvim-win64"
+          $drive = $nvimPath.Substring(0, 1).ToLower()
+          $rest = $nvimPath.Substring(2).Replace("\", "/")
+          $bashPath = "/" + $drive + $rest
           Add-Content -Path $env:GITHUB_PATH -Value $nvimPath
+          Add-Content -Path $env:GITHUB_PATH -Value $bashPath
 
       - name: Verify requested Neovim version
         env:

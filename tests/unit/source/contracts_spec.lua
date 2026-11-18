@@ -3,9 +3,6 @@ local unit_helpers = require "unit_helpers"
 
 local T = MiniTest.new_set()
 
-local SHARED_WORKFLOW_REF = "cf41eb9"
-local E2E_WORKFLOW_REF = "main"
-
 local function assert_nonempty_strings(values, names)
   for _, name in ipairs(names) do
     assert.equals("string", type(values[name]), name)
@@ -24,6 +21,11 @@ local function workflow_job(workflow, name)
   local start = assert(workflow:find("\n  " .. name .. ":\n", 1, true))
   local finish = workflow:find("\n  [_%a][_%w-]*:\n", start + 1)
   return workflow:sub(start, finish and finish - 1 or #workflow)
+end
+
+local function workflow_ref(job, workflow_name)
+  local pattern = workflow_name:gsub("%.", "%%.")
+  return job:match("uses:%s+.-/" .. pattern .. "@([^%s]+)")
 end
 
 T["DECL-01 enables the AstroTheme dashboard integration"] = function()
@@ -91,16 +93,23 @@ T["CI-CONTRACT-01 delegates Neovim testing and separates unprivileged CI from re
   assert.is_truthy(workflow:find('cron: "0 6 * * *"', 1, true))
   assert.is_truthy(workflow:find('cron: "0 8 * * 1"', 1, true))
 
-  assert.is_truthy(ci:find("plugin_ci.yml@" .. SHARED_WORKFLOW_REF, 1, true))
+  local shared_ci_ref = assert(workflow_ref(ci, "plugin_ci.yml"))
+  local shared_release_ref = assert(workflow_ref(release, "plugin_ci.yml"))
+  local shared_pr_ref = assert(workflow_ref(pr, "validate_pr.yml"))
+  local shared_announcement_ref = assert(workflow_ref(announcement, "discord_announcement.yml"))
+
+  assert.equals(shared_ci_ref, shared_release_ref)
+  assert.equals(shared_ci_ref, shared_pr_ref)
+  assert.equals(shared_ci_ref, shared_announcement_ref)
   assert.is_truthy(ci:find("github.event_name == 'pull_request'", 1, true))
   assert.is_truthy(ci:find("contents: read", 1, true))
   assert.is_truthy(ci:find("is_production: false", 1, true))
   assert.is_truthy(ci:find("docs: false", 1, true))
   assert.is_nil(ci:find("secrets:", 1, true))
 
-  assert.is_truthy(
-    tests:find("AstroNvim/AstroNvim-e2e/.github/workflows/neovim_testing.yml@" .. E2E_WORKFLOW_REF, 1, true)
-  )
+  local e2e_workflow_ref = assert(workflow_ref(tests, "neovim_testing.yml"))
+  local e2e_test_ref = assert(tests:match "test_ref:%s+([^%s]+)")
+  assert.equals(e2e_workflow_ref, e2e_test_ref)
   assert.is_truthy(tests:find("github.event_name == 'push'", 1, true))
   assert.is_truthy(tests:find("github.event_name == 'pull_request'", 1, true))
   assert.is_truthy(tests:find("github.event_name == 'schedule'", 1, true))
@@ -109,7 +118,6 @@ T["CI-CONTRACT-01 delegates Neovim testing and separates unprivileged CI from re
   assert.is_truthy(tests:find("source_ref:", 1, true))
   assert.is_truthy(tests:find("github.event.pull_request.head.sha", 1, true))
   assert.is_truthy(tests:find("test_repository: AstroNvim/AstroNvim-e2e", 1, true))
-  assert.is_truthy(tests:find("test_ref: " .. E2E_WORKFLOW_REF, 1, true))
   assert.is_truthy(tests:find('minimum_neovim: "0.12.0"', 1, true))
   assert.is_truthy(tests:find('visual_neovim: "0.12.4"', 1, true))
   assert.is_truthy(tests:find('nightly_neovim: "nightly"', 1, true))
@@ -126,7 +134,6 @@ T["CI-CONTRACT-01 delegates Neovim testing and separates unprivileged CI from re
       true
     )
   )
-  assert.is_truthy(release:find("plugin_ci.yml@" .. SHARED_WORKFLOW_REF, 1, true))
   assert.is_truthy(release:find("github.event_name == 'push'", 1, true))
   assert.is_truthy(release:find("contents: write", 1, true))
   assert.is_truthy(release:find("pull-requests: write", 1, true))
@@ -134,12 +141,10 @@ T["CI-CONTRACT-01 delegates Neovim testing and separates unprivileged CI from re
   assert.is_truthy(release:find("is_production: true", 1, true))
   assert.is_truthy(release:find("docs: false", 1, true))
 
-  assert.is_truthy(pr:find("validate_pr.yml@" .. SHARED_WORKFLOW_REF, 1, true))
   assert.is_truthy(pr:find("pull-requests: read", 1, true))
   assert.is_nil(pr:find("with:", 1, true))
   assert.is_nil(pr:find("secrets:", 1, true))
 
-  assert.is_truthy(announcement:find("discord_announcement.yml@" .. SHARED_WORKFLOW_REF, 1, true))
   assert.is_truthy(announcement:find("github.event_name == 'release'", 1, true))
   assert.is_truthy(announcement:find("contents: read", 1, true))
   assert.is_truthy(announcement:find("DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}", 1, true))

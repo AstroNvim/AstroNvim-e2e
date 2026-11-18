@@ -16,7 +16,7 @@ jobs:
       contents: read
     with:
       source_repository: AstroNvim/AstroNvim
-      source_ref: main
+      source_ref: e2e_testing
       test_repository: >-
         ${{ github.event.pull_request.head.repo.full_name
         || github.repository }}
