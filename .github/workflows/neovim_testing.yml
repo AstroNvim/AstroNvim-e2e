@@ -197,16 +197,10 @@ jobs:
       - name: Run ${{ matrix.suite }} test suite
         shell: bash
         env:
-          ASTRONVIM_E2E_ROOT: ${{ github.workspace }}/e2e
-          ASTRONVIM_SOURCE_ROOT: ${{ github.workspace }}/source
-          ASTRONVIM_TEST_SUMMARY_DIR: >-
-            ${{ github.workspace }}/source/.ci-test-summary
-          ASTRONVIM_TEST_OUTPUT: >-
-            ${{ github.workspace }}/source/.ci-test-summary/test-output.log
-          ASTRONVIM_TEST_CASE_RESULTS: >-
-            ${{ github.workspace }}/source/.ci-test-summary/cases.json
-          ASTRONVIM_TEST_STATUS_FILE: >-
-            ${{ github.workspace }}/source/.ci-test-summary/status
+          ASTRONVIM_TEST_SUMMARY_DIR: .ci-test-summary
+          ASTRONVIM_TEST_OUTPUT: .ci-test-summary/test-output.log
+          ASTRONVIM_TEST_CASE_RESULTS: .ci-test-summary/cases.json
+          ASTRONVIM_TEST_STATUS_FILE: .ci-test-summary/status
           ASTRONVIM_TEST_SUITE: ${{ matrix.suite }}
           ASTRONVIM_TEST_REQUESTED_NEOVIM: ${{ matrix.neovim }}
           ASTRONVIM_TEST_PLATFORM: ${{ matrix.platform }}
@@ -214,38 +208,38 @@ jobs:
           ASTRONVIM_TEST_SHELL: bash
         run: |
           set +e
-          cd "$ASTRONVIM_SOURCE_ROOT"
+          cd source
+          source_root="$PWD"
+          harness_root="$PWD/../e2e"
+          export ASTRONVIM_SOURCE_ROOT="$source_root"
+          export ASTRONVIM_E2E_ROOT="$harness_root"
+          mkdir -p "$ASTRONVIM_TEST_SUMMARY_DIR"
           case "$ASTRONVIM_TEST_SUITE" in
             semantic|semantic-nightly)
-              make -f "$ASTRONVIM_E2E_ROOT/Makefile" \
+              make -f "$harness_root/Makefile" \
                 test-semantic \
-                SOURCE_ROOT="$ASTRONVIM_SOURCE_ROOT" \
-                HARNESS_ROOT="$ASTRONVIM_E2E_ROOT"
+                SOURCE_ROOT="$source_root" \
+                HARNESS_ROOT="$harness_root" > "$ASTRONVIM_TEST_OUTPUT" 2>&1
               ;;
             *)
-              make -f "$ASTRONVIM_E2E_ROOT/Makefile" \
+              make -f "$harness_root/Makefile" \
                 test \
-                SOURCE_ROOT="$ASTRONVIM_SOURCE_ROOT" \
-                HARNESS_ROOT="$ASTRONVIM_E2E_ROOT"
+                SOURCE_ROOT="$source_root" \
+                HARNESS_ROOT="$harness_root" > "$ASTRONVIM_TEST_OUTPUT" 2>&1
               ;;
           esac
           status=$?
+          cat "$ASTRONVIM_TEST_OUTPUT"
           printf '%s\n' "$status" > "$ASTRONVIM_TEST_STATUS_FILE"
           exit "$status"
 
       - name: Generate test summary
         if: always()
         env:
-          ASTRONVIM_E2E_ROOT: ${{ github.workspace }}/e2e
-          ASTRONVIM_SOURCE_ROOT: ${{ github.workspace }}/source
-          ASTRONVIM_TEST_SUMMARY_DIR: >-
-            ${{ github.workspace }}/source/.ci-test-summary
-          ASTRONVIM_TEST_OUTPUT: >-
-            ${{ github.workspace }}/source/.ci-test-summary/test-output.log
-          ASTRONVIM_TEST_CASE_RESULTS: >-
-            ${{ github.workspace }}/source/.ci-test-summary/cases.json
-          ASTRONVIM_TEST_STATUS_FILE: >-
-            ${{ github.workspace }}/source/.ci-test-summary/status
+          ASTRONVIM_TEST_SUMMARY_DIR: .ci-test-summary
+          ASTRONVIM_TEST_OUTPUT: .ci-test-summary/test-output.log
+          ASTRONVIM_TEST_CASE_RESULTS: .ci-test-summary/cases.json
+          ASTRONVIM_TEST_STATUS_FILE: .ci-test-summary/status
           ASTRONVIM_TEST_SUITE: ${{ matrix.suite }}
           ASTRONVIM_TEST_REQUESTED_NEOVIM: ${{ matrix.neovim }}
           ASTRONVIM_TEST_PLATFORM: ${{ matrix.platform }}
@@ -253,8 +247,12 @@ jobs:
           ASTRONVIM_TEST_SHELL: bash
         shell: bash
         run: |
-          cd "$ASTRONVIM_SOURCE_ROOT"
-          nvim -l "$ASTRONVIM_E2E_ROOT/tests/ci_summary.lua"
+          cd source
+          source_root="$PWD"
+          harness_root="$PWD/../e2e"
+          export ASTRONVIM_SOURCE_ROOT="$source_root"
+          export ASTRONVIM_E2E_ROOT="$harness_root"
+          nvim -l "$harness_root/tests/ci_summary.lua"
 
       - name: Upload test summary and provenance
         if: always()
