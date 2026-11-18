@@ -1,4 +1,4 @@
-.PHONY: test test-semantic test-e2e test-prepare test-clear test-update-deps test-fingerprint test-update-goldens test-unit test-harness-unit
+.PHONY: test test-semantic test-e2e test-prepare test-clear test-update-deps test-fingerprint test-update-goldens test-unit test-unit-contracts test-harness-unit
 
 SOURCE_ROOT ?= $(abspath ../AstroNvim)
 HARNESS_ROOT ?= $(CURDIR)
@@ -30,6 +30,9 @@ test-e2e:
 
 test-unit:
 	@cd "$(SOURCE_ROOT)" && $(TEST_ENV) "$(NVIM)" -l "$(HARNESS_ROOT)/tests/minit.lua" --minitest $(SOURCE_UNIT_SPECS)
+
+test-unit-contracts:
+	@cd "$(SOURCE_ROOT)" && $(TEST_ENV) "$(NVIM)" -l "$(HARNESS_ROOT)/tests/minit.lua" --minitest $(SOURCE_ROOT)/tests/unit/contracts_spec.lua
 
 test-harness-unit:
 	@cd "$(SOURCE_ROOT)" && $(TEST_ENV) "$(NVIM)" -l "$(HARNESS_ROOT)/tests/minit.lua" --minitest $(HARNESS_UNIT_SPECS)
