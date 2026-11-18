@@ -350,6 +350,8 @@ function M.fixture_project(child)
   return case.project
 end
 
+function M.canonical_path(path) return vim.uv.fs_realpath(path) or vim.fs.normalize(path) end
+
 local function golden_update_enabled() return vim.env.ASTRONVIM_TEST_UPDATE_GOLDENS == "1" end
 
 local function assert_golden_path(path, kind)

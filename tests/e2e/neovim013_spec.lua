@@ -25,7 +25,7 @@ T["NVIM-FS-01 uses native autoread or the supported checktime fallback"] = funct
   local is_neovim_013 = child.lua_get "vim.fn.has('nvim-0.13') == 1"
   if not is_neovim_013 then
     assert.is_false(child.lua_get "vim.o.autoread")
-    local path = helpers.fixture_project(child) .. "/checktime-fallback.txt"
+    local path = helpers.canonical_path(helpers.fixture_project(child) .. "/checktime-fallback.txt")
     vim.fn.writefile({ "before" }, path)
     child.lua(([[vim.cmd.edit(%s)]]):format(vim.inspect(path)))
     helpers.wait_until(
@@ -66,7 +66,7 @@ T["NVIM-FS-01 uses native autoread or the supported checktime fallback"] = funct
   assert.equals("histogram", options.diff_algorithm)
   assert.equals("60", options.diff_linematch)
 
-  local path = helpers.fixture_project(child) .. "/native-autoread.txt"
+  local path = helpers.canonical_path(helpers.fixture_project(child) .. "/native-autoread.txt")
   vim.fn.writefile({ "before" }, path)
   child.lua(([[vim.cmd.edit(%s)]]):format(vim.inspect(path)))
   helpers.wait_until(

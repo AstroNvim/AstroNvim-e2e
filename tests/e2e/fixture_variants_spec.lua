@@ -56,8 +56,14 @@ T["FIXTURE-01 validates file variants and live GuessIndent and Gitsigns effects"
 
   assert.same({ expandtab = true, tabstop = 2, softtabstop = 2, shiftwidth = 2 }, state.indentation_options)
   assert.is_true(state.gitsigns_hunk_count >= 1)
-  assert.equals(vim.fs.joinpath(project, "indentation.txt"), state.indentation_name)
-  assert.equals(vim.fs.joinpath(project, "git-tracked.txt"), state.tracked_name)
+  assert.equals(
+    helpers.canonical_path(vim.fs.joinpath(project, "indentation.txt")),
+    helpers.canonical_path(state.indentation_name)
+  )
+  assert.equals(
+    helpers.canonical_path(vim.fs.joinpath(project, "git-tracked.txt")),
+    helpers.canonical_path(state.tracked_name)
+  )
   assert.is_true(state.indentation_buffer ~= state.tracked_buffer)
   assert.same({ " M git-tracked.txt", "?? git-untracked.txt" }, state.git_status)
   assert.same({ "root", "  two-space indent", "\tone-tab indent" }, state.indentation_content)

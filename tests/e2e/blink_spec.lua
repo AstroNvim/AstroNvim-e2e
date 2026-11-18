@@ -40,8 +40,16 @@ local function open_buffer_completion()
     return { rhs = mapping.rhs, callback = type(mapping.callback), desc = mapping.desc }
   end)()]]
   assert.is_true(mapping.callback == "function" or mapping.rhs ~= "", vim.inspect(mapping))
-  child.lua [[require("blink.cmp").show()]]
-  helpers.wait_until(child, "require('blink.cmp').is_active()", "Blink completion activation")
+  helpers.wait_until(
+    child,
+    [[(function()
+      local cmp = require("blink.cmp")
+      if cmp.is_active() then return true end
+      cmp.show()
+      return false
+    end)()]],
+    "Blink completion activation"
+  )
   helpers.wait_until(child, "#require('blink.cmp').get_items() > 0", "Blink completion items")
   helpers.wait_until(child, "require('blink.cmp').is_menu_visible()", "Blink completion menu")
 end

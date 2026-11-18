@@ -15,7 +15,7 @@ local T = MiniTest.new_set {
 T["SESSION-E2E-01 saves and restores a real Resession session across child restart"] = function()
   child = helpers.start_ready_child { "resession.nvim" }
   local project = helpers.fixture_project(child)
-  local plain = vim.fs.joinpath(project, "plain.txt")
+  local plain = helpers.canonical_path(vim.fs.joinpath(project, "plain.txt"))
 
   child.lua(([=[
     vim.cmd.edit(%s)
