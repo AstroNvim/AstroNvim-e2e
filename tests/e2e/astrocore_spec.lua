@@ -242,20 +242,17 @@ T["AUTOCMD-03 tracks valid unique buffers across tabs deletion and terminal clos
     vim.t.bufs = { second, stale }
     vim.api.nvim_exec_autocmds("BufEnter", astronvim_test_autocmd_options(second))
 
+    vim.g.astronvim_test_terminal_closed = false
+    vim.api.nvim_create_autocmd("TermClose", {
+      once = true,
+      callback = function() vim.g.astronvim_test_terminal_closed = true end,
+    })
     vim.cmd "botright new"
     vim.cmd "terminal %s"
     local terminal = vim.api.nvim_get_current_buf()
-    vim.g.astronvim_test_terminal_closed = false
     _G.astronvim_test_terminal_before_close = { count = count(vim.t.bufs, terminal) }
     _G.astronvim_test_terminal_event_start = #_G.astronvim_test_buffer_events
     _G.astronvim_test_terminal_redraw_start = _G.astronvim_test_redraws
-    vim.api.nvim_create_autocmd(
-      "TermClose",
-      astronvim_test_autocmd_options(terminal, {
-        once = true,
-        callback = function() vim.g.astronvim_test_terminal_closed = true end,
-      })
-    )
     vim.fn.jobstop(vim.b[terminal].terminal_job_id)
 
     _G.astronvim_test_tracking = {

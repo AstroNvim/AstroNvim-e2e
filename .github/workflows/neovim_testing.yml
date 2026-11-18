@@ -175,6 +175,8 @@ jobs:
           Add-Content -Path $env:GITHUB_ENV -Value $bashEnvironment
           $windowsEnvironment = "ASTRONVIM_NEVIM_MIXED_PATH=$windowsPath"
           Add-Content -Path $env:GITHUB_ENV -Value $windowsEnvironment
+          $nativeEnvironment = "ASTRONVIM_NEVIM_WINDOWS_PATH=$nvimPath"
+          Add-Content -Path $env:GITHUB_ENV -Value $nativeEnvironment
 
       - name: Verify requested Neovim version
         env:
@@ -227,15 +229,17 @@ jobs:
           if [ -n "${ASTRONVIM_NEVIM_BASH_PATH:-}" ]; then
             export PATH="$ASTRONVIM_NEVIM_BASH_PATH:$PATH"
             nvim_binary="${ASTRONVIM_NEVIM_MIXED_PATH:-$ASTRONVIM_NEVIM_BASH_PATH}/nvim.exe"
+            nvim_child_binary="${ASTRONVIM_NEVIM_WINDOWS_PATH:-$nvim_binary}"
           else
             nvim_binary=nvim
+            nvim_child_binary=nvim
           fi
           cd source
           source_root="$PWD"
           harness_root="$PWD/../e2e"
           export ASTRONVIM_SOURCE_ROOT="$source_root"
           export ASTRONVIM_E2E_ROOT="$harness_root"
-          export ASTRONVIM_TEST_NVIM="$nvim_binary"
+          export ASTRONVIM_TEST_NVIM="$nvim_child_binary"
           mkdir -p "$ASTRONVIM_TEST_SUMMARY_DIR"
           case "$ASTRONVIM_TEST_SUITE" in
             semantic|semantic-nightly)
