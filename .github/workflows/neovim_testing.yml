@@ -182,11 +182,17 @@ jobs:
           set -euo pipefail
           if [ -n "${ASTRONVIM_NEVIM_BASH_PATH:-}" ]; then
             export PATH="$ASTRONVIM_NEVIM_BASH_PATH:$PATH"
+            nvim_binary="$ASTRONVIM_NEVIM_BASH_PATH/nvim.exe"
+          else
+            nvim_binary=nvim
           fi
           mkdir -p source/.ci-test-summary
-          nvim --version | tee source/.ci-test-summary/nvim-version.txt
-          actual="$(nvim --version | head -n 1 | \
-            sed -E 's/^NVIM v([0-9]+\.[0-9]+\.[0-9]+).*$/\1/')"
+          nvim_version_file=source/.ci-test-summary/nvim-version.txt
+          "$nvim_binary" --version | tee "$nvim_version_file"
+          actual="$(
+            "$nvim_binary" --version | head -n 1 | \
+              sed -E 's/^NVIM v([0-9]+\.[0-9]+\.[0-9]+).*$/\1/'
+          )"
           printf 'requested=%s actual=%s\n' "$REQUESTED_NEOVIM" "$actual"
           if [ "$RUNTIME_POLICY" = "nightly" ]; then
             case "$actual" in
@@ -217,6 +223,9 @@ jobs:
           set +e
           if [ -n "${ASTRONVIM_NEVIM_BASH_PATH:-}" ]; then
             export PATH="$ASTRONVIM_NEVIM_BASH_PATH:$PATH"
+            nvim_binary="$ASTRONVIM_NEVIM_BASH_PATH/nvim.exe"
+          else
+            nvim_binary=nvim
           fi
           cd source
           source_root="$PWD"
@@ -229,13 +238,15 @@ jobs:
               make -f "$harness_root/Makefile" \
                 test-semantic \
                 SOURCE_ROOT="$source_root" \
-                HARNESS_ROOT="$harness_root" > "$ASTRONVIM_TEST_OUTPUT" 2>&1
+                HARNESS_ROOT="$harness_root" \
+                NVIM="$nvim_binary" > "$ASTRONVIM_TEST_OUTPUT" 2>&1
               ;;
             *)
               make -f "$harness_root/Makefile" \
                 test \
                 SOURCE_ROOT="$source_root" \
-                HARNESS_ROOT="$harness_root" > "$ASTRONVIM_TEST_OUTPUT" 2>&1
+                HARNESS_ROOT="$harness_root" \
+                NVIM="$nvim_binary" > "$ASTRONVIM_TEST_OUTPUT" 2>&1
               ;;
           esac
           status=$?
@@ -259,13 +270,16 @@ jobs:
         run: |
           if [ -n "${ASTRONVIM_NEVIM_BASH_PATH:-}" ]; then
             export PATH="$ASTRONVIM_NEVIM_BASH_PATH:$PATH"
+            nvim_binary="$ASTRONVIM_NEVIM_BASH_PATH/nvim.exe"
+          else
+            nvim_binary=nvim
           fi
           cd source
           source_root="$PWD"
           harness_root="$PWD/../e2e"
           export ASTRONVIM_SOURCE_ROOT="$source_root"
           export ASTRONVIM_E2E_ROOT="$harness_root"
-          nvim -l "$harness_root/tests/ci_summary.lua"
+          "$nvim_binary" -l "$harness_root/tests/ci_summary.lua"
 
       - name: Upload test summary and provenance
         if: always()
