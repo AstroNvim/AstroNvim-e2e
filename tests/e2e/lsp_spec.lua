@@ -26,8 +26,9 @@ T["LSP-E2E-01 attaches a real local server, registers a capability, and formats"
     vim.cmd [[doautocmd User AstroFile]]
     local log_path = vim.fs.joinpath(project, "lsp-events.jsonl")
     vim.env.ASTRONVIM_E2E_LSP_LOG = log_path
+    local nvim = vim.env.ASTRONVIM_TEST_NVIM or vim.v.progpath
     vim.lsp.config("astronvim-e2e-lsp", {
-      cmd = { vim.v.progpath, "-l", server },
+      cmd = { nvim, "-l", server },
       root_dir = project,
       filetypes = { "text" },
     })

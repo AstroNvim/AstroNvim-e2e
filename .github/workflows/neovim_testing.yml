@@ -235,6 +235,7 @@ jobs:
           harness_root="$PWD/../e2e"
           export ASTRONVIM_SOURCE_ROOT="$source_root"
           export ASTRONVIM_E2E_ROOT="$harness_root"
+          export ASTRONVIM_TEST_NVIM="$nvim_binary"
           mkdir -p "$ASTRONVIM_TEST_SUMMARY_DIR"
           case "$ASTRONVIM_TEST_SUITE" in
             semantic|semantic-nightly)

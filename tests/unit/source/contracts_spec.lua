@@ -14,7 +14,7 @@ local function read_file(path)
   local file = assert(io.open(path, "rb"))
   local contents = assert(file:read "*a")
   file:close()
-  return contents
+  return (contents:gsub("\r\n", "\n"))
 end
 
 local function workflow_job(workflow, name)

@@ -84,9 +84,10 @@ T["DAP-E2E-03 runs and terminates a hermetic adapter through AstroNvim mappings"
     local dap = require "dap"
     vim.env.ASTRONVIM_E2E_DAP_LOG = %s
     vim.env.ASTRONVIM_E2E_DAP_SOURCE = %s
+    local nvim = vim.env.ASTRONVIM_TEST_NVIM or vim.v.progpath
     dap.adapters.astronvim_fixture = {
       type = "executable",
-      command = vim.v.progpath,
+      command = nvim,
       args = { "-l", %s },
     }
     local source = %s

@@ -14,7 +14,7 @@ local T = MiniTest.new_set {
 }
 
 local function terminal_sleep_command()
-  if vim.fn.has "win32" == 1 then return "ping -n 11 127.0.0.1 > NUL" end
+  if vim.fn.has "win32" == 1 then return "ping -n 3 127.0.0.1 > NUL" end
   return "sleep 10"
 end
 

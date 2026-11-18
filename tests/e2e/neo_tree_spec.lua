@@ -261,16 +261,16 @@ T["NEO-09 reflects external file changes with watcher or explicit refresh"] = fu
   local renamed_path = vim.fs.joinpath(project, renamed)
 
   vim.fn.writefile({ "created" }, created_path)
-  if not watcher_enabled then child.lua [[vim.cmd "Neotree refresh"]] end
+  if not watcher_enabled then child.type_keys "R" end
   helpers.wait_until(child, neo_tree_contains_expression(created), "Neo-tree create update")
 
   assert.equals(0, vim.fn.rename(created_path, renamed_path))
-  if not watcher_enabled then child.lua [[vim.cmd "Neotree refresh"]] end
+  if not watcher_enabled then child.type_keys "R" end
   helpers.wait_until(child, neo_tree_contains_expression(renamed), "Neo-tree rename update")
   helpers.wait_until(child, "not " .. neo_tree_contains_expression(created), "Neo-tree old name removal")
 
   assert.equals(0, vim.fn.delete(renamed_path))
-  if not watcher_enabled then child.lua [[vim.cmd "Neotree refresh"]] end
+  if not watcher_enabled then child.type_keys "R" end
   helpers.wait_until(child, "not " .. neo_tree_contains_expression(renamed), "Neo-tree delete update")
 end
 
