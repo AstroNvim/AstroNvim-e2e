@@ -168,10 +168,13 @@ jobs:
           $drive = $nvimPath.Substring(0, 1).ToLower()
           $rest = $nvimPath.Substring(2).Replace("\", "/")
           $bashPath = "/" + $drive + $rest
+          $windowsPath = $nvimPath.Replace("\", "/")
           Add-Content -Path $env:GITHUB_PATH -Value $nvimPath
           Add-Content -Path $env:GITHUB_PATH -Value $bashPath
           $bashEnvironment = "ASTRONVIM_NEVIM_BASH_PATH=$bashPath"
           Add-Content -Path $env:GITHUB_ENV -Value $bashEnvironment
+          $windowsEnvironment = "ASTRONVIM_NEVIM_MIXED_PATH=$windowsPath"
+          Add-Content -Path $env:GITHUB_ENV -Value $windowsEnvironment
 
       - name: Verify requested Neovim version
         env:
@@ -182,7 +185,7 @@ jobs:
           set -euo pipefail
           if [ -n "${ASTRONVIM_NEVIM_BASH_PATH:-}" ]; then
             export PATH="$ASTRONVIM_NEVIM_BASH_PATH:$PATH"
-            nvim_binary="$ASTRONVIM_NEVIM_BASH_PATH/nvim.exe"
+            nvim_binary="${ASTRONVIM_NEVIM_MIXED_PATH:-$ASTRONVIM_NEVIM_BASH_PATH}/nvim.exe"
           else
             nvim_binary=nvim
           fi
@@ -223,7 +226,7 @@ jobs:
           set +e
           if [ -n "${ASTRONVIM_NEVIM_BASH_PATH:-}" ]; then
             export PATH="$ASTRONVIM_NEVIM_BASH_PATH:$PATH"
-            nvim_binary="$ASTRONVIM_NEVIM_BASH_PATH/nvim.exe"
+            nvim_binary="${ASTRONVIM_NEVIM_MIXED_PATH:-$ASTRONVIM_NEVIM_BASH_PATH}/nvim.exe"
           else
             nvim_binary=nvim
           fi
@@ -270,7 +273,7 @@ jobs:
         run: |
           if [ -n "${ASTRONVIM_NEVIM_BASH_PATH:-}" ]; then
             export PATH="$ASTRONVIM_NEVIM_BASH_PATH:$PATH"
-            nvim_binary="$ASTRONVIM_NEVIM_BASH_PATH/nvim.exe"
+            nvim_binary="${ASTRONVIM_NEVIM_MIXED_PATH:-$ASTRONVIM_NEVIM_BASH_PATH}/nvim.exe"
           else
             nvim_binary=nvim
           fi
