@@ -4,11 +4,7 @@ SOURCE_ROOT ?= $(abspath ../AstroNvim)
 HARNESS_ROOT ?= $(CURDIR)
 NVIM ?= nvim
 TEST_ENV := ASTRONVIM_SOURCE_ROOT="$(SOURCE_ROOT)" ASTRONVIM_E2E_ROOT="$(HARNESS_ROOT)"
-SOURCE_UNIT_SPECS := $(filter-out \
-  $(SOURCE_ROOT)/tests/unit/e2e_helpers_spec.lua \
-  $(SOURCE_ROOT)/tests/unit/helpers_spec.lua \
-  $(SOURCE_ROOT)/tests/unit/test_environment_spec.lua, \
-  $(wildcard $(SOURCE_ROOT)/tests/unit/*.lua))
+SOURCE_UNIT_SPECS := $(sort $(wildcard $(HARNESS_ROOT)/tests/unit/source/*_spec.lua))
 HARNESS_UNIT_SPECS := $(sort $(wildcard $(HARNESS_ROOT)/tests/unit/*_spec.lua))
 E2E_SPECS := $(sort $(wildcard $(HARNESS_ROOT)/tests/e2e/*_spec.lua))
 
@@ -32,7 +28,7 @@ test-unit:
 	@cd "$(SOURCE_ROOT)" && $(TEST_ENV) "$(NVIM)" -l "$(HARNESS_ROOT)/tests/minit.lua" --minitest $(SOURCE_UNIT_SPECS)
 
 test-unit-contracts:
-	@cd "$(SOURCE_ROOT)" && $(TEST_ENV) "$(NVIM)" -l "$(HARNESS_ROOT)/tests/minit.lua" --minitest $(SOURCE_ROOT)/tests/unit/contracts_spec.lua
+	@cd "$(SOURCE_ROOT)" && $(TEST_ENV) "$(NVIM)" -l "$(HARNESS_ROOT)/tests/minit.lua" --minitest "$(HARNESS_ROOT)/tests/unit/source/contracts_spec.lua"
 
 test-harness-unit:
 	@cd "$(SOURCE_ROOT)" && $(TEST_ENV) "$(NVIM)" -l "$(HARNESS_ROOT)/tests/minit.lua" --minitest $(HARNESS_UNIT_SPECS)

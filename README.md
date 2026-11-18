@@ -1,6 +1,6 @@
 # AstroNvim e2e tests
 
-This repository contains the optional AstroNvim child-Neovim test harness, integration tests, fixtures, and visual goldens. It is separate from the AstroNvim source repository so normal AstroNvim clones do not need the full e2e suite.
+This repository contains the optional AstroNvim child-Neovim test harness, source unit specs, integration tests, fixtures, and visual goldens. It is separate from the AstroNvim source repository so normal AstroNvim clones do not need test files or the e2e dependency graph.
 
 The harness always tests an explicit AstroNvim source checkout. It does not use a committed dependency lockfile as execution input. Fresh runs resolve the latest stable plugin graph and record the generated manifest and lockfile as artifacts.
 
@@ -11,7 +11,13 @@ AstroNvim/
 AstroNvim-e2e/
 ```
 
-Run the full current-runtime suite from this repository:
+Run the source unit suite from this repository:
+
+```sh
+make test-unit SOURCE_ROOT=../AstroNvim
+```
+
+Run the full current-runtime suite:
 
 ```sh
 make test SOURCE_ROOT=../AstroNvim
@@ -41,4 +47,4 @@ Generated dependency state belongs to the source checkout under `.tests/`. Use `
 
 The e2e suite covers AstroNvim-owned integration boundaries, lifecycle behavior, public editor state, filesystem effects, notifications, protocol traffic, and supported runtime compatibility. It does not attempt to re-test upstream plugin implementations.
 
-CI checks out the source repository and this repository at explicit refs. Artifacts include the source commit, e2e commit, Neovim identity, generated plugin manifest, generated lockfile, logs, and per-case results.
+CI checks out the AstroNvim source at the exact requested commit. AstroNvim's caller workflow follows this repository's `main` branch for both the reusable workflow and test suite, so e2e changes do not require an AstroNvim workflow edit. Artifacts include the source commit, e2e commit, Neovim identity, generated plugin manifest, generated lockfile, logs, and per-case results.
