@@ -1,0 +1,6 @@
+.tests/
+.tests.bootstrap/
+.tests.prepare.lock
+.ci-test-summary/
+*.jsonl
+.DS_Store

@@ -1,0 +1,27 @@
+---
+name: AstroNvim e2e tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "0 7 * * *"
+  workflow_dispatch:
+
+jobs:
+  tests:
+    uses: ./.github/workflows/neovim_testing.yml
+    permissions:
+      contents: read
+    with:
+      source_repository: AstroNvim/AstroNvim
+      source_ref: main
+      test_repository: >-
+        ${{ github.event.pull_request.head.repo.full_name
+        || github.repository }}
+      test_ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      minimum_neovim: "0.12.0"
+      visual_neovim: "0.12.4"
+      nightly_neovim: "nightly"
+      timeout_minutes: 30
