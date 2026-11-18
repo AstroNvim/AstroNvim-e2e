@@ -175,7 +175,8 @@ jobs:
           Add-Content -Path $env:GITHUB_ENV -Value $bashEnvironment
           $windowsEnvironment = "ASTRONVIM_NEVIM_MIXED_PATH=$windowsPath"
           Add-Content -Path $env:GITHUB_ENV -Value $windowsEnvironment
-          $nativeEnvironment = "ASTRONVIM_NEVIM_WINDOWS_PATH=$nvimPath"
+          $nativeNvim = Join-Path $nvimPath "nvim.exe"
+          $nativeEnvironment = "ASTRONVIM_NEVIM_WINDOWS_PATH=$nativeNvim"
           Add-Content -Path $env:GITHUB_ENV -Value $nativeEnvironment
 
       - name: Verify requested Neovim version
