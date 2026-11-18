@@ -164,7 +164,7 @@ jobs:
           $releaseUrl = "$releaseBase/$releaseTag/nvim-win64.zip"
           Invoke-WebRequest -Uri $releaseUrl -OutFile $archive
           Expand-Archive -Path $archive -DestinationPath $env:RUNNER_TEMP -Force
-          $nvimPath = Join-Path $env:RUNNER_TEMP "nvim-win64"
+          $nvimPath = Join-Path (Join-Path $env:RUNNER_TEMP "nvim-win64") "bin"
           $drive = $nvimPath.Substring(0, 1).ToLower()
           $rest = $nvimPath.Substring(2).Replace("\", "/")
           $bashPath = "/" + $drive + $rest
