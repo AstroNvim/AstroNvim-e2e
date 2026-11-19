@@ -19,7 +19,7 @@ local function terminal_sleep_command()
 end
 
 local function terminal_job_command()
-  if vim.fn.has "win32" == 1 then return { "cmd.exe", "/c", "ping -n 3 127.0.0.1 > nul" } end
+  if vim.fn.has "win32" == 1 then return { vim.env.ComSpec or "cmd.exe", "/c", "exit", "0" } end
   return "sleep 10"
 end
 

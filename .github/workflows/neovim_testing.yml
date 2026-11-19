@@ -230,7 +230,7 @@ jobs:
           if [ -n "${ASTRONVIM_NEVIM_BASH_PATH:-}" ]; then
             export PATH="$ASTRONVIM_NEVIM_BASH_PATH:$PATH"
             nvim_binary="${ASTRONVIM_NEVIM_MIXED_PATH:-$ASTRONVIM_NEVIM_BASH_PATH}/nvim.exe"
-            nvim_child_binary="${ASTRONVIM_NEVIM_WINDOWS_PATH:-$nvim_binary}"
+            nvim_child_binary="$nvim_binary"
           else
             nvim_binary=nvim
             nvim_child_binary=nvim
