@@ -28,7 +28,7 @@ T["LSP-E2E-01 attaches a real local server, registers a capability, and formats"
     vim.env.ASTRONVIM_E2E_LSP_LOG = log_path
     local nvim = vim.env.ASTRONVIM_TEST_NVIM or vim.v.progpath
     vim.lsp.config("astronvim-e2e-lsp", {
-      cmd = { nvim, "-l", server },
+      cmd = { nvim, "--headless", "-l", server },
       root_dir = project,
       filetypes = { "text" },
     })

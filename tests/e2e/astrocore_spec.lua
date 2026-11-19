@@ -14,7 +14,12 @@ local T = MiniTest.new_set {
 }
 
 local function terminal_sleep_command()
-  if vim.fn.has "win32" == 1 then return "cmd /c exit 0" end
+  if vim.fn.has "win32" == 1 then return "ping -n 3 127.0.0.1 > NUL" end
+  return "sleep 10"
+end
+
+local function terminal_job_command()
+  if vim.fn.has "win32" == 1 then return { "cmd.exe", "/c", "ping -n 3 127.0.0.1 > nul" } end
   return "sleep 10"
 end
 
@@ -257,6 +262,7 @@ T["AUTOCMD-03 tracks valid unique buffers across tabs deletion and terminal clos
     _G.astronvim_test_terminal_redraw_start = _G.astronvim_test_redraws
     local terminal_job = vim.fn.termopen(%s)
     vim.fn.jobstop(terminal_job)
+    vim.fn.jobwait({ terminal_job }, 1000)
 
     _G.astronvim_test_tracking = {
       first = first,
@@ -267,7 +273,7 @@ T["AUTOCMD-03 tracks valid unique buffers across tabs deletion and terminal clos
       stale = stale,
       terminal = terminal,
     }
-  ]=]):format(vim.inspect(terminal_sleep_command())))
+  ]=]):format(vim.inspect(terminal_job_command())))
 
   helpers.wait_until(child, "vim.g.astronvim_test_terminal_closed == true", "terminal close")
 
