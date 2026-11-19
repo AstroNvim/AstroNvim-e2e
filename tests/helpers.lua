@@ -163,6 +163,7 @@ local function with_child_environment(case, child_environment, callback)
     ASTRONVIM_TEST_LAZY_PATH = config.lazy_path,
     ASTRONVIM_TEST_PLUGIN_ROOT = config.plugin_root,
     ASTRONVIM_TEST_LOCKFILE = config.lockfile,
+    ASTRONVIM_TEST_NVIM = vim.env.ASTRONVIM_TEST_NVIM,
   }, child_environment or {}, deterministic_environment, fixture_git_environment(case))
   local previous = {}
 
