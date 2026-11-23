@@ -28,6 +28,7 @@ T["LSP-E2E-01 attaches a real local server, registers a capability, and formats"
     vim.env.ASTRONVIM_E2E_LSP_LOG = log_path
     local nvim = vim.fn.exepath "nvim"
     if nvim == "" then nvim = vim.env.ASTRONVIM_TEST_NVIM or vim.v.progpath end
+    _G.astronvim_test_child_nvim = nvim
     local probe = vim.system({ nvim, "--headless", "--clean", "-u", "NONE", "+qa" }, { text = true }):wait()
     assert(probe.code == 0, ("Unable to launch the child Neovim executable: %%s"):format(vim.inspect(probe)))
     vim.lsp.config("astronvim-e2e-lsp", {
@@ -39,7 +40,33 @@ T["LSP-E2E-01 attaches a real local server, registers a capability, and formats"
     return { client_id = client_id, buffer = vim.api.nvim_get_current_buf(), log_path = log_path }
   end)()]=]):format(vim.inspect(project), vim.inspect(server)))
 
-  helpers.wait_until(child, "#vim.lsp.get_clients({ name = 'astronvim-e2e-lsp' }) == 1", "real LSP client")
+  local function wait_for_lsp(expression, description)
+    local ok, err = pcall(helpers.wait_until, child, expression, description)
+    if ok then return end
+    local diagnostics = child.lua_get(
+      ([=[(function()
+        local log = {}
+        if vim.fn.filereadable(%s) == 1 then log = vim.fn.readfile(%s) end
+        local clients = {}
+        for _, client in ipairs(vim.lsp.get_clients()) do
+          table.insert(clients, { id = client.id, name = client.name, cmd = client.config.cmd })
+        end
+        return {
+          nvim = _G.astronvim_test_child_nvim,
+          progpath = vim.v.progpath,
+          exepath = vim.fn.exepath("nvim"),
+          clients = clients,
+          log = log,
+        }
+      end)()]=]):format(
+        vim.inspect(child.lua_get "vim.fs.joinpath(vim.fn.getcwd(), 'lsp-events.jsonl')"),
+        vim.inspect(child.lua_get "vim.fs.joinpath(vim.fn.getcwd(), 'lsp-events.jsonl')")
+      )
+    )
+    error(("%s\nLSP diagnostics: %s"):format(err, vim.inspect(diagnostics)), 0)
+  end
+
+  wait_for_lsp("#vim.lsp.get_clients({ name = 'astronvim-e2e-lsp' }) == 1", "real LSP client")
   helpers.wait_until(
     child,
     "vim.lsp.get_clients({ name = 'astronvim-e2e-lsp' })[1]:supports_method('textDocument/formatting')",
