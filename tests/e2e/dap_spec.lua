@@ -91,7 +91,7 @@ T["DAP-E2E-03 runs and terminates a hermetic adapter through AstroNvim mappings"
     dap.adapters.astronvim_fixture = {
       type = "executable",
       command = nvim,
-      args = { "--headless", "-l", %s },
+      args = { "--headless", "--clean", "-u", "NONE", "-l", %s },
     }
     local source = %s
     local launch_path = vim.fs.joinpath(vim.fs.dirname(source), ".vscode", "launch.json")

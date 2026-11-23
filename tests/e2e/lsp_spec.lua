@@ -31,7 +31,7 @@ T["LSP-E2E-01 attaches a real local server, registers a capability, and formats"
     local probe = vim.system({ nvim, "--headless", "--clean", "-u", "NONE", "+qa" }, { text = true }):wait()
     assert(probe.code == 0, ("Unable to launch the child Neovim executable: %%s"):format(vim.inspect(probe)))
     vim.lsp.config("astronvim-e2e-lsp", {
-      cmd = { nvim, "--headless", "-l", server },
+      cmd = { nvim, "--headless", "--clean", "-u", "NONE", "-l", server },
       root_dir = project,
       filetypes = { "text" },
     })
