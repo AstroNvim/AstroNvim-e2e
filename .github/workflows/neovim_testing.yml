@@ -67,7 +67,7 @@ jobs:
             archive_name: nvim-macos-x86_64.tar.gz
             allow_failure: false
             runtime_policy: stable
-          - os: macos-14
+          - os: macos-15
             platform: macos
             architecture: arm64
             neovim: ${{ inputs.minimum_neovim }}
