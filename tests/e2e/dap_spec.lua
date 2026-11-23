@@ -84,7 +84,8 @@ T["DAP-E2E-03 runs and terminates a hermetic adapter through AstroNvim mappings"
     local dap = require "dap"
     vim.env.ASTRONVIM_E2E_DAP_LOG = %s
     vim.env.ASTRONVIM_E2E_DAP_SOURCE = %s
-    local nvim = vim.env.ASTRONVIM_TEST_NVIM or vim.v.progpath
+    local nvim = vim.fn.exepath "nvim"
+    if nvim == "" then nvim = vim.env.ASTRONVIM_TEST_NVIM or vim.v.progpath end
     local probe = vim.system({ nvim, "--headless", "--clean", "-u", "NONE", "+qa" }, { text = true }):wait()
     assert(probe.code == 0, ("Unable to launch the child Neovim executable: %%s"):format(vim.inspect(probe)))
     dap.adapters.astronvim_fixture = {

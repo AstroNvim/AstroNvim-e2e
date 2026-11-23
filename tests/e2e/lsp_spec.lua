@@ -26,7 +26,8 @@ T["LSP-E2E-01 attaches a real local server, registers a capability, and formats"
     vim.cmd [[doautocmd User AstroFile]]
     local log_path = vim.fs.joinpath(project, "lsp-events.jsonl")
     vim.env.ASTRONVIM_E2E_LSP_LOG = log_path
-    local nvim = vim.env.ASTRONVIM_TEST_NVIM or vim.v.progpath
+    local nvim = vim.fn.exepath "nvim"
+    if nvim == "" then nvim = vim.env.ASTRONVIM_TEST_NVIM or vim.v.progpath end
     local probe = vim.system({ nvim, "--headless", "--clean", "-u", "NONE", "+qa" }, { text = true }):wait()
     assert(probe.code == 0, ("Unable to launch the child Neovim executable: %%s"):format(vim.inspect(probe)))
     vim.lsp.config("astronvim-e2e-lsp", {
