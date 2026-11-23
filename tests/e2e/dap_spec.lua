@@ -86,9 +86,6 @@ T["DAP-E2E-03 runs and terminates a hermetic adapter through AstroNvim mappings"
     vim.env.ASTRONVIM_E2E_DAP_SOURCE = %s
     local nvim = vim.fn.exepath "nvim"
     if nvim == "" then nvim = vim.env.ASTRONVIM_TEST_NVIM or vim.v.progpath end
-    _G.astronvim_test_child_nvim = nvim
-    local probe = vim.system({ nvim, "--headless", "--clean", "-u", "NONE", "+qa" }, { text = true }):wait()
-    assert(probe.code == 0, ("Unable to launch the child Neovim executable: %%s"):format(vim.inspect(probe)))
     dap.adapters.astronvim_fixture = {
       type = "executable",
       command = nvim,
@@ -131,30 +128,9 @@ T["DAP-E2E-03 runs and terminates a hermetic adapter through AstroNvim mappings"
     mapping.callback()
   ]]
 
-  local function wait_for_dap(expression, description)
-    local ok, err = pcall(helpers.wait_until, child, expression, description)
-    if ok then return end
-    local diagnostics = child.lua_get(([=[(function()
-      local log = {}
-      if vim.fn.filereadable(%s) == 1 then log = vim.fn.readfile(%s) end
-      local notifications = {}
-      for _, notification in ipairs(Snacks.notifier.get_history()) do
-        table.insert(notifications, notification.msg)
-      end
-      return {
-        nvim = _G.astronvim_test_child_nvim,
-        progpath = vim.v.progpath,
-        exepath = vim.fn.exepath("nvim"),
-        session = require("dap").session() ~= nil,
-        log = log,
-        notifications = notifications,
-      }
-    end)()]=]):format(vim.inspect(log), vim.inspect(log)))
-    error(("%s\nDAP diagnostics: %s"):format(err, vim.inspect(diagnostics)), 0)
-  end
-
-  wait_for_dap("require('dap').session() ~= nil", "DAP adapter session")
-  wait_for_dap(
+  helpers.wait_until(child, "require('dap').session() ~= nil", "DAP adapter session")
+  helpers.wait_until(
+    child,
     ([[(function()
       if vim.fn.filereadable(%s) == 0 then return false end
       local commands = {}
@@ -167,7 +143,7 @@ T["DAP-E2E-03 runs and terminates a hermetic adapter through AstroNvim mappings"
     end)()]]):format(vim.inspect(log), vim.inspect(log)),
     "DAP adapter initialization"
   )
-  wait_for_dap("#vim.api.nvim_list_wins() > 1", "DAP UI open")
+  helpers.wait_until(child, "#vim.api.nvim_list_wins() > 1", "DAP UI open")
 
   local commands = child.lua_get(([[(function()
     local commands = {}
@@ -199,8 +175,8 @@ T["DAP-E2E-03 runs and terminates a hermetic adapter through AstroNvim mappings"
     assert(type(mapping.callback) == "function")
     mapping.callback()
   ]]
-  wait_for_dap("require('dap').session() == nil", "DAP session termination")
-  wait_for_dap("#vim.api.nvim_list_wins() == 1", "DAP UI close")
+  helpers.wait_until(child, "require('dap').session() == nil", "DAP session termination")
+  helpers.wait_until(child, "#vim.api.nvim_list_wins() == 1", "DAP UI close")
 
   commands = child.lua_get(([[(function()
     local commands = {}

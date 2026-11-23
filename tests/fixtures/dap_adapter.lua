@@ -29,7 +29,8 @@ local function send(message)
   sequence = sequence + 1
   message.seq = sequence
   local body = vim.json.encode(message)
-  io.write("Content-Length: " .. #body .. "\r\n\r\n" .. body)
+  local newline = vim.fn.has "win32" == 1 and "\n" or "\r\n"
+  io.write("Content-Length: " .. #body .. newline .. newline .. body)
   io.flush()
 end
 
