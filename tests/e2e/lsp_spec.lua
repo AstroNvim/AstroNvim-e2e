@@ -7,6 +7,23 @@ local T = MiniTest.new_set {
   hooks = {
     pre_case = function() child = nil end,
     post_case = function()
+      if child then
+        pcall(
+          child.lua,
+          [[
+            for _, client in ipairs(vim.lsp.get_clients { name = "astronvim-e2e-lsp" }) do
+              client:stop()
+            end
+          ]]
+        )
+        pcall(
+          helpers.wait_until,
+          child,
+          "#vim.lsp.get_clients({ name = 'astronvim-e2e-lsp' }) == 0",
+          "LSP fixture shutdown",
+          1000
+        )
+      end
       helpers.stop_child(child)
       child = nil
     end,

@@ -39,7 +39,10 @@ local function with_helpers(options, callback)
       if value == "error" then error "child RPC failed" end
       return value == nil and false or value
     end,
-    lua = function(expression) table.insert(state.lua_calls, expression) end,
+    lua = function(expression)
+      table.insert(state.lua_calls, expression)
+      if options.lua_error then error(options.lua_error) end
+    end,
     start = function(arguments)
       state.start_arguments = arguments
       if options.start_error then error(options.start_error) end
@@ -165,6 +168,33 @@ T["WAIT-01 retries child RPC conditions after a false result"] = function()
   end)
 end
 
+T["WAIT-02 reports a dead child instead of masking the RPC error as a timeout"] = function()
+  with_helpers({ wait_values = { "error" }, child_running = false }, function(helpers, state)
+    local child = helpers.start_child()
+    local ok, err = pcall(helpers.wait_until, child, "ready", "child readiness", 100)
+
+    assert.is_false(ok)
+    assert_contains(err, "Child Neovim exited while waiting for child readiness")
+    assert_contains(err, "child RPC failed")
+    assert.equals(1, state.lua_get_calls)
+    assert.equals(0, state.wait_calls)
+    helpers.stop_child(child)
+  end)
+end
+
+T["WAIT-03 retains the final RPC error when a live child never becomes ready"] = function()
+  with_helpers({ wait_values = { "error" } }, function(helpers, state)
+    local child = helpers.start_child()
+    local ok, err = pcall(helpers.wait_until, child, "ready", "child readiness", 100)
+
+    assert.is_false(ok)
+    assert_contains(err, "Timed out waiting for child readiness")
+    assert_contains(err, "child RPC failed")
+    assert.is_true(state.lua_get_calls > 1)
+    helpers.stop_child(child)
+  end)
+end
+
 T["CHILD-01 starts a ready child and loads requested plugins"] = function()
   with_helpers({ wait_values = { true } }, function(helpers, state, root)
     local child = helpers.start_ready_child { "astrolsp" }
@@ -174,6 +204,32 @@ T["CHILD-01 starts a ready child and loads requested plugins"] = function()
     assert_contains(state.lua_calls[1], "astrolsp")
     helpers.stop_child(child)
     assert.same({ root }, state.deleted_roots)
+  end)
+end
+
+T["CHILD-02 cleans a child when readiness fails before the caller receives it"] = function()
+  with_helpers({ wait_values = { false } }, function(helpers, state, root)
+    local ok, err = pcall(helpers.start_ready_child)
+    local fixture_available = pcall(helpers.fixture_project, state.child)
+
+    assert.is_false(ok)
+    assert_contains(err, "Timed out waiting for VimEnter and LazyDone")
+    assert.equals(1, state.stop_attempts)
+    assert.same({ root }, state.deleted_roots)
+    assert.is_false(fixture_available)
+  end)
+end
+
+T["CHILD-03 cleans a child when requested plugin loading fails"] = function()
+  with_helpers({ wait_values = { true }, lua_error = "plugin loading failed" }, function(helpers, state, root)
+    local ok, err = pcall(helpers.start_ready_child, { "astrolsp" })
+    local fixture_available = pcall(helpers.fixture_project, state.child)
+
+    assert.is_false(ok)
+    assert_contains(err, "plugin loading failed")
+    assert.equals(1, state.stop_attempts)
+    assert.same({ root }, state.deleted_roots)
+    assert.is_false(fixture_available)
   end)
 end
 

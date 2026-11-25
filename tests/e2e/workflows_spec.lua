@@ -160,6 +160,12 @@ T["TERM-05 owns base options and bounds terminal lifecycle through AstroNvim map
       return true
     end, 20)
 
+    local terminal_job = terminal_buffer and vim.b[terminal_buffer].terminal_job_id
+    if terminal_job then
+      vim.fn.jobstop(terminal_job)
+      vim.fn.jobwait({ terminal_job }, 1000)
+    end
+
     return {
       mapping_rhs = mapping.rhs,
       size = spec.opts.size,

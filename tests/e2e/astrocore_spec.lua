@@ -576,7 +576,10 @@ T["MAP-08 uses terminal navigation mappings in ordinary and floating terminal wi
   assert.equals(50, child.lua_get "vim.api.nvim_win_get_config(0).zindex")
   child.lua [[
     for _, job_id in ipairs(vim.g.astronvim_test_terminal_jobs or {}) do
-      if job_id then vim.fn.jobstop(job_id) end
+      if job_id then
+        vim.fn.jobstop(job_id)
+        vim.fn.jobwait({ job_id }, 1000)
+      end
     end
   ]]
 end

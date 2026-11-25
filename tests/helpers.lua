@@ -287,8 +287,15 @@ end
 
 function M.start_ready_child(plugins)
   local child = M.start_child()
-  M.wait_until(child, "vim.g.astronvim_test_ready == true", "VimEnter and LazyDone")
-  if plugins then child.lua(([=[require("lazy").load { plugins = %s }]=]):format(vim.inspect(plugins))) end
+  local ok, err = xpcall(function()
+    M.wait_until(child, "vim.g.astronvim_test_ready == true", "VimEnter and LazyDone")
+    if plugins then child.lua(([=[require("lazy").load { plugins = %s }]=]):format(vim.inspect(plugins))) end
+  end, debug.traceback)
+  if not ok then
+    local cleanup_ok, cleanup_error = pcall(M.stop_child, child)
+    if not cleanup_ok then err = err .. "\nFailed child cleanup: " .. cleanup_error_message(cleanup_error) end
+    error(err, 0)
+  end
   return child
 end
 
@@ -304,17 +311,26 @@ end
 function M.wait_until(child, expression, description, timeout)
   local timeout_ms = timeout or config.wait_timeout
   local deadline = vim.uv.hrtime() + timeout_ms * 1000000
+  local last_error
 
   while true do
     local ok, value = pcall(child.lua_get, expression)
     if ok and value == true then return true end
+    if not ok then
+      last_error = value
+      local running_ok, running = pcall(child.is_running)
+      if running_ok and not running then
+        error(("Child Neovim exited while waiting for %s: %s"):format(description, cleanup_error_message(value)), 0)
+      end
+    end
 
     local remaining_ms = math.floor((deadline - vim.uv.hrtime()) / 1000000)
     if remaining_ms <= 0 then break end
     vim.wait(math.min(20, remaining_ms))
   end
 
-  error(("Timed out waiting for %s"):format(description), 0)
+  local detail = last_error and (": " .. cleanup_error_message(last_error)) or ""
+  error(("Timed out waiting for %s%s"):format(description, detail), 0)
 end
 
 function M.stop_child(child)

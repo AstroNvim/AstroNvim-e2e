@@ -7,6 +7,16 @@ local T = MiniTest.new_set {
   hooks = {
     pre_case = function() child = nil end,
     post_case = function()
+      if child then
+        pcall(
+          child.lua,
+          [[
+            local dap = require "dap"
+            if dap.session() then dap.terminate { all = true } end
+          ]]
+        )
+        pcall(helpers.wait_until, child, "require('dap').session() == nil", "DAP fixture shutdown", 1000)
+      end
       helpers.stop_child(child)
       child = nil
     end,
