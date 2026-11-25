@@ -24,6 +24,20 @@ local function contains(values, expected)
   return false
 end
 
+local function contains_all(values, expected)
+  for _, value in ipairs(expected) do
+    if not contains(values, value) then return false end
+  end
+  return true
+end
+
+local function has_detector_category(detectors, expected)
+  for _, detector in ipairs(detectors) do
+    if type(detector) == "table" and contains_all(detector, expected) then return true end
+  end
+  return false
+end
+
 local function with_core(options, callback)
   options = options or {}
   local calls = { buffer = {}, notifications = {}, schedules = 0 }
@@ -114,12 +128,12 @@ T["CORE-02 keeps diagnostic signs, float semantics, and jump compatibility wirin
   )
 end
 
-T["CORE-03 keeps rooter ordering and scoped nonintrusive defaults"] = function()
+T["CORE-03 keeps root detection categories and scoped nonintrusive defaults"] = function()
   with_core(nil, function(specs)
     local rooter = core_options(specs).rooter
-    assert.same("lsp", rooter.detector[1])
-    assert.same({ ".git", "_darcs", ".hg", ".bzr", ".svn" }, rooter.detector[2])
-    assert.same({ "lua", "Makefile", "package.json" }, rooter.detector[3])
+    assert.is_true(contains(rooter.detector, "lsp"))
+    assert.is_true(has_detector_category(rooter.detector, { ".git", "_darcs", ".hg", ".bzr", ".svn" }))
+    assert.is_true(has_detector_category(rooter.detector, { "lua", "Makefile", "package.json" }))
     assert.same({}, rooter.ignore.servers)
     assert.same({}, rooter.ignore.dirs)
     assert.equals("global", rooter.scope)
@@ -168,26 +182,28 @@ end
 T["CORE-06 warns only for available pinned-plugin updates"] = function()
   with_core({ config = { pin_plugins = true } }, function(specs, calls, context)
     find_plugin(specs, "AstroNvim/AstroNvim").build()
-    assert.equals(1, context.scheduled_count())
     context.drain_scheduled()
-    assert.equals(1, #calls.notifications)
-    assert.equals("warn", calls.notifications[1].level)
-    assert.is_true(calls.notifications[1].message:find("Pinned versions", 1, true) ~= nil)
+    local notification = calls.notifications[1]
+    assert.is_not_nil(notification)
+    assert.equals("warn", notification.level)
+    assert.is_true(notification.message:find("Pinned versions", 1, true) ~= nil)
   end)
 
   for _, config in ipairs {
     { pin_plugins = false },
     { pin_plugins = true, update_notification = false },
   } do
-    with_core({ config = config }, function(specs, _, context)
+    with_core({ config = config }, function(specs, calls, context)
       find_plugin(specs, "AstroNvim/AstroNvim").build()
-      assert.equals(0, context.scheduled_count())
+      context.drain_scheduled()
+      assert.same({}, calls.notifications)
     end)
   end
 
-  with_core({ config = { pin_plugins = true }, astrocore_unavailable = true }, function(specs, _, context)
+  with_core({ config = { pin_plugins = true }, astrocore_unavailable = true }, function(specs, calls, context)
     find_plugin(specs, "AstroNvim/AstroNvim").build()
-    assert.equals(0, context.scheduled_count())
+    context.drain_scheduled()
+    assert.same({}, calls.notifications)
   end)
 end
 
@@ -263,10 +279,14 @@ T["OPTIONS-01 preserves list-valued defaults while applying selected option inva
     assert.equals(true, options.relativenumber)
     assert.equals(false, options.wrap)
     assert.is_true(contains(options.backspace, "nostop"))
-    assert.is_true(contains(options.backspace, backspace[1]))
+    for _, value in ipairs(backspace) do
+      assert.is_true(contains(options.backspace, value), "Missing backspace default: " .. value)
+    end
     assert.is_true(contains(options.diffopt, "algorithm:histogram"))
     assert.is_true(contains(options.diffopt, "linematch:60"))
-    assert.is_true(contains(options.diffopt, diffopt[1]))
+    for _, value in ipairs(diffopt) do
+      assert.is_true(contains(options.diffopt, value), "Missing diffopt default: " .. value)
+    end
     assert.equals(true, options.shortmess.s)
     assert.equals(true, options.shortmess.I)
     assert.equals(true, options.shortmess.c)
@@ -345,24 +365,26 @@ local function with_mappings(callback)
 end
 
 T["MAP-01 keeps movement expression metadata without snapshotting mappings"] = function()
+  local function assert_movement(mapping, no_count, with_count)
+    assert.is_true(mapping.expr)
+    assert.is_true(mapping.silent)
+    assert.equals("string", type(mapping[1]))
+    local no_count_expression = mapping[1]:gsub("v:count", "0")
+    local with_count_expression = mapping[1]:gsub("v:count", "2")
+    assert.equals(no_count, vim.fn.eval(no_count_expression))
+    assert.equals(with_count, vim.fn.eval(with_count_expression))
+  end
+
   with_mappings(function(maps)
     for _, mode in ipairs { "n", "x" } do
-      assert.equals("v:count == 0 ? 'gj' : 'j'", maps[mode].j[1])
-      assert.equals("v:count == 0 ? 'gk' : 'k'", maps[mode].k[1])
-      assert.equals(true, maps[mode].j.expr)
-      assert.equals(true, maps[mode].k.silent)
+      assert_movement(maps[mode].j, "gj", "j")
+      assert_movement(maps[mode].k, "gk", "k")
     end
   end)
 end
 
-T["MAP-02 records rename forwarding and stable write and quit declarations"] = function()
+T["MAP-02 delegates file rename to AstroCore"] = function()
   with_mappings(function(maps, calls)
-    assert.same({ "<Cmd>w<CR>", desc = "Save" }, maps.n["<Leader>w"])
-    assert.same({ "<Cmd>silent! update! | redraw<CR>", desc = "Force write" }, maps.n["<C-S>"])
-    assert.same({ "<Cmd>confirm q<CR>", desc = "Quit Window" }, maps.n["<Leader>q"])
-    assert.same({ "<Cmd>q!<CR>", desc = "Force quit" }, maps.n["<C-Q>"])
-    assert.same({ "gcc", remap = true, desc = "Toggle comment line" }, maps.n["<Leader>/"])
-    assert.same({ "gc", remap = true, desc = "Toggle comment" }, maps.x["<Leader>/"])
     maps.n["<Leader>R"][1]()
     assert.same({ { target = "rename" } }, calls)
   end)

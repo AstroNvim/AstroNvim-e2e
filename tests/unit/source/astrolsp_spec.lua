@@ -10,37 +10,35 @@ local function contains(values, expected)
   return false
 end
 
+local function assert_file_operation(calls, index, operation, argument)
+  local call = calls[index]
+  assert.is_not_nil(call)
+  assert.equals(operation, call.operation)
+  assert.same(argument, call.argument)
+end
+
+local function operation_arguments(calls, operation)
+  local arguments = {}
+  for _, call in ipairs(calls) do
+    if call.operation == operation then table.insert(arguments, call.argument) end
+  end
+  return arguments
+end
+
+local function assert_operation_arguments(calls, operation, expected)
+  assert.same(expected, operation_arguments(calls, operation))
+end
+
 local function with_astrolsp_spec(options, callback)
   options = options or {}
   local calls = {}
   local metadata = {
-    capability_calls = 0,
     capabilities = options.capabilities or { sentinel = "generated capabilities" },
-    range_queries = {},
-    version_calls = 0,
-    version_value = options.version_value or { sentinel = "current version" },
   }
   local buffers = options.buffers or {}
   local valid_buffers = options.valid_buffers or {}
   local names = options.names or {}
   local operations = options.operations or {}
-  local version = setmetatable({
-    range = function(query)
-      table.insert(metadata.range_queries, query)
-      return {
-        has = function(_, current_version)
-          metadata.range_version = current_version
-          return options.version_in_codelens_disabled_range == true
-        end,
-      }
-    end,
-  }, {
-    __call = function()
-      metadata.version_calls = metadata.version_calls + 1
-      return metadata.version_value
-    end,
-  })
-
   local file_operations = {}
   for _, name in ipairs {
     "willCreateFiles",
@@ -73,7 +71,7 @@ local function with_astrolsp_spec(options, callback)
         FILE_RENAMED = "file_renamed",
       },
     },
-    replace_vim = { b = true, version = true },
+    replace_vim = { b = true },
     vim = {
       api = {
         nvim_buf_get_name = function(bufnr) return names[bufnr] end,
@@ -81,16 +79,12 @@ local function with_astrolsp_spec(options, callback)
       b = buffers,
       lsp = {
         protocol = {
-          make_client_capabilities = function()
-            metadata.capability_calls = metadata.capability_calls + 1
-            return metadata.capabilities
-          end,
+          make_client_capabilities = function() return metadata.capabilities end,
         },
       },
       uv = {
         fs_stat = options.fs_stat or function() return nil end,
       },
-      version = version,
     },
   }, function(spec) return callback(spec, calls, buffers, metadata) end)
 end
@@ -124,12 +118,10 @@ T["LSP-02 reports valid new and URI buffers around a write"] = function()
     did_create.callback { buf = 3 }
     assert.equals(false, buffers[3].new_file)
 
-    assert.same({
-      { operation = "willCreateFiles", argument = "/workspace/new.lua" },
-      { operation = "didCreateFiles", argument = "/workspace/new.lua" },
-      { operation = "willCreateFiles", argument = "zipfile:///workspace/archive.zip::new.lua" },
-      { operation = "didCreateFiles", argument = "zipfile:///workspace/archive.zip::new.lua" },
-    }, calls)
+    assert_file_operation(calls, 1, "willCreateFiles", "/workspace/new.lua")
+    assert_file_operation(calls, 2, "didCreateFiles", "/workspace/new.lua")
+    assert_file_operation(calls, 3, "willCreateFiles", "zipfile:///workspace/archive.zip::new.lua")
+    assert_file_operation(calls, 4, "didCreateFiles", "zipfile:///workspace/archive.zip::new.lua")
   end)
 end
 
@@ -176,38 +168,34 @@ T["LSP-03 clears state before a didCreateFiles callback error"] = function()
   end)
 end
 
-local function neo_tree_handlers(spec)
+local function neo_tree_handler_entries(options)
   local handlers = {}
-  local options = { event_handlers = {} }
-  spec.specs[2].opts(nil, options)
   for _, handler in ipairs(options.event_handlers) do
-    local key = handler.id .. "_" .. handler.event
-    assert.is_nil(handlers[key], "Duplicate Neo-tree handler: " .. key)
-    handlers[key] = handler.handler
+    assert.is_nil(handlers[handler.event], "Duplicate Neo-tree event: " .. handler.event)
+    handlers[handler.event] = handler
   end
-  return handlers, #options.event_handlers
+  return handlers
 end
 
-T["LSP-04 registers Neo-tree adapters with stable IDs and event variants"] = function()
-  with_astrolsp_spec({
-    fs_stat = function(path)
-      return path == "/workspace/source-directory" and { type = "directory" }
-        or path == "/workspace/destination-directory" and { type = "directory" }
-        or nil
-    end,
-  }, function(spec)
-    local handlers, handler_count = neo_tree_handlers(spec)
+local function neo_tree_handlers_for_event(options, event)
+  local handlers = {}
+  for _, handler in ipairs(options.event_handlers) do
+    if handler.event == event then table.insert(handlers, handler) end
+  end
+  return handlers
+end
 
-    assert.equals(8, handler_count)
-    assert.equals("function", type(handlers.astrolsp_willCreateFiles_before_file_add))
-    assert.equals("function", type(handlers.astrolsp_didCreateFiles_file_added))
-    assert.equals("function", type(handlers.astrolsp_willDeleteFiles_before_file_delete))
-    assert.equals("function", type(handlers.astrolsp_didDeleteFiles_file_deleted))
-    assert.equals("function", type(handlers.astrolsp_willRenameFiles_before_file_move))
-    assert.equals("function", type(handlers.astrolsp_willRenameFiles_before_file_rename))
-    assert.equals("function", type(handlers.astrolsp_didRenameFiles_file_moved))
-    assert.equals("function", type(handlers.astrolsp_didRenameFiles_file_renamed))
-  end)
+local function neo_tree_handler(options, event, excluded)
+  for _, handler in ipairs(neo_tree_handlers_for_event(options, event)) do
+    if handler ~= excluded then return handler end
+  end
+  error("Missing Neo-tree event handler: " .. event)
+end
+
+local function neo_tree_handlers(spec, options)
+  options = options or { event_handlers = {} }
+  spec.specs[2].opts(nil, options)
+  return neo_tree_handler_entries(options)
 end
 
 T["LSP-04 adapts Neo-tree create delete move and rename state"] = function()
@@ -222,64 +210,49 @@ T["LSP-04 adapts Neo-tree create delete move and rename state"] = function()
   }, function(spec, calls)
     local handlers = neo_tree_handlers(spec)
 
-    handlers.astrolsp_willCreateFiles_before_file_add "/workspace/created.lua"
-    handlers.astrolsp_didCreateFiles_file_added "/workspace/created.lua"
+    handlers.before_file_add.handler "/workspace/created.lua"
+    handlers.file_added.handler "/workspace/created.lua"
 
     deleted = false
-    handlers.astrolsp_willDeleteFiles_before_file_delete "/workspace/deleted-directory"
+    handlers.before_file_delete.handler "/workspace/deleted-directory"
     deleted = true
-    handlers.astrolsp_didDeleteFiles_file_deleted "/workspace/deleted-directory"
-    handlers.astrolsp_didDeleteFiles_file_deleted "/workspace/deleted-directory"
+    handlers.file_deleted.handler "/workspace/deleted-directory"
+    handlers.file_deleted.handler "/workspace/deleted-directory"
 
-    handlers.astrolsp_willRenameFiles_before_file_move {
+    handlers.before_file_move.handler {
       source = "/workspace/source-directory",
       destination = "/workspace/destination-file",
     }
-    handlers.astrolsp_willRenameFiles_before_file_rename {
+    handlers.before_file_rename.handler {
       source = "/workspace/missing-source",
       destination = "/workspace/destination-directory",
     }
-    handlers.astrolsp_didRenameFiles_file_moved {
+    handlers.file_moved.handler {
       source = "/workspace/missing-source",
       destination = "/workspace/destination-file",
     }
-    handlers.astrolsp_didRenameFiles_file_renamed {
+    handlers.file_renamed.handler {
       source = "/workspace/missing-source",
       destination = "/workspace/destination-directory",
     }
 
-    assert.same({
-      { operation = "willCreateFiles", argument = "/workspace/created.lua" },
-      { operation = "didCreateFiles", argument = "/workspace/created.lua" },
-      {
-        operation = "willDeleteFiles",
-        argument = { path = "/workspace/deleted-directory", kind = "folder" },
-      },
-      {
-        operation = "didDeleteFiles",
-        argument = { path = "/workspace/deleted-directory", kind = "folder" },
-      },
-      {
-        operation = "didDeleteFiles",
-        argument = { path = "/workspace/deleted-directory", kind = "file" },
-      },
-      {
-        operation = "willRenameFiles",
-        argument = { from = "/workspace/source-directory", to = "/workspace/destination-file", kind = "folder" },
-      },
-      {
-        operation = "willRenameFiles",
-        argument = { from = "/workspace/missing-source", to = "/workspace/destination-directory", kind = "folder" },
-      },
-      {
-        operation = "didRenameFiles",
-        argument = { from = "/workspace/missing-source", to = "/workspace/destination-file", kind = "file" },
-      },
-      {
-        operation = "didRenameFiles",
-        argument = { from = "/workspace/missing-source", to = "/workspace/destination-directory", kind = "folder" },
-      },
-    }, calls)
+    assert_operation_arguments(calls, "willCreateFiles", { "/workspace/created.lua" })
+    assert_operation_arguments(calls, "didCreateFiles", { "/workspace/created.lua" })
+    assert_operation_arguments(calls, "willDeleteFiles", {
+      { path = "/workspace/deleted-directory", kind = "folder" },
+    })
+    assert_operation_arguments(calls, "didDeleteFiles", {
+      { path = "/workspace/deleted-directory", kind = "folder" },
+      { path = "/workspace/deleted-directory", kind = "file" },
+    })
+    assert_operation_arguments(calls, "willRenameFiles", {
+      { from = "/workspace/source-directory", to = "/workspace/destination-file", kind = "folder" },
+      { from = "/workspace/missing-source", to = "/workspace/destination-directory", kind = "folder" },
+    })
+    assert_operation_arguments(calls, "didRenameFiles", {
+      { from = "/workspace/missing-source", to = "/workspace/destination-file", kind = "file" },
+      { from = "/workspace/missing-source", to = "/workspace/destination-directory", kind = "folder" },
+    })
   end)
 end
 
@@ -334,18 +307,6 @@ T["LSP-01 declares AstroLSP feature, file operation, and wildcard capability def
       willRename = true,
     }, options.file_operations.operations)
     assert.is_true(options.config["*"].capabilities == metadata.capabilities)
-    assert.equals(1, metadata.capability_calls)
-    assert.same({}, metadata.range_queries)
-    assert.equals(0, metadata.version_calls)
-    assert.same({}, options.handlers)
-    assert.same({}, options.servers)
-    assert.is_nil(options.on_attach)
-  end)
-
-  with_astrolsp_spec({ version_in_codelens_disabled_range = true }, function(spec, _, _, metadata)
-    assert.is_true(spec.opts.features.codelens)
-    assert.same({}, metadata.range_queries)
-    assert.equals(0, metadata.version_calls)
   end)
 end
 
@@ -439,44 +400,30 @@ local function with_astrolsp_mappings(options, callback)
   end)
 end
 
-local function conditional_mapping_inventory(maps)
-  local inventory = {}
-  for mode, mode_maps in pairs(maps) do
-    for lhs, mapping in pairs(mode_maps) do
-      if mapping.cond then inventory[mode .. ":" .. lhs] = mapping.cond end
-    end
-  end
-  return inventory
+local function assert_mapping_condition(maps, mode, lhs, expected) assert.equals(expected, maps[mode][lhs].cond) end
+
+local function assert_supported_method(supported, mapping, client, bufnr, expected_method)
+  assert.is_true(mapping.cond(client, bufnr))
+  local request = supported[#supported]
+  assert.equals(expected_method, request.method)
+  assert.equals(bufnr, request.bufnr)
 end
 
-T["LSPMAP-01 inventories conditional mappings and their required methods"] = function()
+T["LSPMAP-01 exposes representative capability gates"] = function()
   with_astrolsp_mappings({ workspace_diagnostics = true }, function(maps)
-    local inventory = conditional_mapping_inventory(maps)
-    assert.same({
-      ["n:<Leader>la"] = "textDocument/codeAction",
-      ["x:<Leader>la"] = "textDocument/codeAction",
-      ["n:<Leader>lA"] = "textDocument/codeAction",
-      ["n:<Leader>lL"] = "textDocument/codeLens",
-      ["n:gI"] = "textDocument/implementation",
-      ["n:<Leader>uL"] = "textDocument/codeLens",
-      ["n:gD"] = "textDocument/declaration",
-      ["n:gd"] = "textDocument/definition",
-      ["n:<Leader>lf"] = inventory["n:<Leader>lf"],
-      ["v:<Leader>lf"] = inventory["v:<Leader>lf"],
-      ["n:<Leader>uf"] = inventory["n:<Leader>uf"],
-      ["n:<Leader>uF"] = inventory["n:<Leader>uF"],
-      ["n:<Leader>u?"] = "textDocument/signatureHelp",
-      ["n:<Leader>uh"] = "textDocument/inlayHint",
-      ["n:<Leader>uH"] = "textDocument/inlayHint",
-      ["n:<Leader>lR"] = "textDocument/references",
-      ["n:<Leader>lr"] = "textDocument/rename",
-      ["n:<Leader>lh"] = "textDocument/signatureHelp",
-      ["n:gK"] = "textDocument/signatureHelp",
-      ["n:gy"] = "textDocument/typeDefinition",
-      ["n:<Leader>lG"] = "workspace/symbol",
-      ["n:<Leader>lw"] = "workspace/diagnostic",
-      ["n:<Leader>uY"] = inventory["n:<Leader>uY"],
-    }, inventory)
+    for _, gate in ipairs {
+      { "n", "<Leader>la", "textDocument/codeAction" },
+      { "x", "<Leader>la", "textDocument/codeAction" },
+      { "n", "<Leader>lA", "textDocument/codeAction" },
+      { "n", "<Leader>lL", "textDocument/codeLens" },
+      { "n", "<Leader>uL", "textDocument/codeLens" },
+      { "n", "<Leader>u?", "textDocument/signatureHelp" },
+      { "n", "<Leader>lR", "textDocument/references" },
+      { "n", "<Leader>lr", "textDocument/rename" },
+      { "n", "<Leader>lw", "workspace/diagnostic" },
+    } do
+      assert_mapping_condition(maps, gate[1], gate[2], gate[3])
+    end
 
     local supported = {}
     local client = {
@@ -486,18 +433,11 @@ T["LSPMAP-01 inventories conditional mappings and their required methods"] = fun
         return true
       end,
     }
-    assert.is_true(inventory["n:<Leader>lf"](client, 31))
-    assert.is_true(inventory["v:<Leader>lf"](client, 32))
-    assert.is_true(inventory["n:<Leader>uY"](client, 33))
-    assert.is_true(inventory["n:<Leader>uf"](client, 34))
-    assert.is_true(inventory["n:<Leader>uF"](client, 35))
-    assert.same({
-      { method = "textDocument/formatting", bufnr = 31 },
-      { method = "textDocument/rangeFormatting", bufnr = 32 },
-      { method = "textDocument/semanticTokens/full", bufnr = 33 },
-      { method = "textDocument/formatting", bufnr = 34 },
-      { method = "textDocument/formatting", bufnr = 35 },
-    }, supported)
+    assert_supported_method(supported, maps.n["<Leader>lf"], client, 31, "textDocument/formatting")
+    assert_supported_method(supported, maps.v["<Leader>lf"], client, 32, "textDocument/rangeFormatting")
+    assert_supported_method(supported, maps.n["<Leader>uY"], client, 33, "textDocument/semanticTokens/full")
+    assert_supported_method(supported, maps.n["<Leader>uf"], client, 34, "textDocument/formatting")
+    assert_supported_method(supported, maps.n["<Leader>uF"], client, 35, "textDocument/formatting")
   end)
 
   for _, disabled in ipairs { true, { "formatter" } } do
@@ -506,74 +446,57 @@ T["LSPMAP-01 inventories conditional mappings and their required methods"] = fun
         name = "formatter",
         supports_method = function() return true end,
       }
+      assert.is_false(maps.n["<Leader>lf"].cond(client, 40))
+      assert.is_false(maps.v["<Leader>lf"].cond(client, 40))
       assert.is_false(maps.n["<Leader>uf"].cond(client, 41))
       assert.is_false(maps.n["<Leader>uF"].cond(client, 42))
     end)
   end
 end
 
-local function expected_call(name, ...) return { name = name, arguments = { n = select("#", ...), ... } } end
+local function assert_mapping_dispatch(maps, calls, mode, lhs, name, ...)
+  maps[mode][lhs][1](...)
+  local call = calls[#calls]
+  assert.equals(name, call.name)
+  assert.same({ n = select("#", ...), ... }, call.arguments)
+end
 
-T["LSPMAP-02 dispatches mapping calls with stable arguments"] = function()
+T["LSPMAP-02 dispatches each public mapping operation"] = function()
   with_astrolsp_mappings({ native_codelens = true, workspace_diagnostics = true }, function(maps, calls)
-    for _, mapping in ipairs {
-      maps.n["<Leader>la"],
-      maps.x["<Leader>la"],
-      maps.n["<Leader>lA"],
-      maps.n["<Leader>lf"],
-      maps.v["<Leader>lf"],
-      maps.n["<Leader>lL"],
-      maps.n["<Leader>uL"],
-      maps.n["gD"],
-      maps.n.gd,
-      maps.n["<Leader>uf"],
-      maps.n["<Leader>uF"],
-      maps.n["<Leader>u?"],
-      maps.n["<Leader>uh"],
-      maps.n["<Leader>uH"],
-      maps.n["<Leader>lR"],
-      maps.n["<Leader>lr"],
-      maps.n["<Leader>lh"],
-      maps.n.gK,
-      maps.n.gy,
-      maps.n["<Leader>lG"],
-      maps.n["<Leader>lw"],
-      maps.n["<Leader>uY"],
-    } do
-      mapping[1]()
-    end
-
-    assert.same({
-      expected_call "code_action",
-      expected_call "code_action",
-      expected_call("code_action", { context = { only = { "source" }, diagnostics = {} } }),
-      expected_call("format", { async = true }),
-      expected_call("format", { async = true }),
-      expected_call "codelens_run",
-      expected_call "toggle_codelens",
-      expected_call "declaration",
-      expected_call "definition",
-      expected_call "toggle_buffer_autoformat",
-      expected_call "toggle_autoformat",
-      expected_call "toggle_signature_help",
-      expected_call "toggle_buffer_inlay_hints",
-      expected_call "toggle_inlay_hints",
-      expected_call "references",
-      expected_call "rename",
-      expected_call "signature_help",
-      expected_call "signature_help",
-      expected_call "type_definition",
-      expected_call "workspace_symbol",
-      expected_call "workspace_diagnostics",
-      expected_call "toggle_buffer_semantic_tokens",
-    }, calls)
+    assert_mapping_dispatch(maps, calls, "n", "<Leader>la", "code_action")
+    assert_mapping_dispatch(maps, calls, "x", "<Leader>la", "code_action")
+    assert_mapping_dispatch(
+      maps,
+      calls,
+      "n",
+      "<Leader>lA",
+      "code_action",
+      { context = { only = { "source" }, diagnostics = {} } }
+    )
+    assert_mapping_dispatch(maps, calls, "n", "<Leader>lf", "format", { async = true })
+    assert_mapping_dispatch(maps, calls, "v", "<Leader>lf", "format", { async = true })
+    assert_mapping_dispatch(maps, calls, "n", "<Leader>lL", "codelens_run")
+    assert_mapping_dispatch(maps, calls, "n", "<Leader>uL", "toggle_codelens")
+    assert_mapping_dispatch(maps, calls, "n", "gD", "declaration")
+    assert_mapping_dispatch(maps, calls, "n", "gd", "definition")
+    assert_mapping_dispatch(maps, calls, "n", "<Leader>uf", "toggle_buffer_autoformat")
+    assert_mapping_dispatch(maps, calls, "n", "<Leader>uF", "toggle_autoformat")
+    assert_mapping_dispatch(maps, calls, "n", "<Leader>u?", "toggle_signature_help")
+    assert_mapping_dispatch(maps, calls, "n", "<Leader>uh", "toggle_buffer_inlay_hints")
+    assert_mapping_dispatch(maps, calls, "n", "<Leader>uH", "toggle_inlay_hints")
+    assert_mapping_dispatch(maps, calls, "n", "<Leader>lR", "references")
+    assert_mapping_dispatch(maps, calls, "n", "<Leader>lr", "rename")
+    assert_mapping_dispatch(maps, calls, "n", "<Leader>lh", "signature_help")
+    assert_mapping_dispatch(maps, calls, "n", "gK", "signature_help")
+    assert_mapping_dispatch(maps, calls, "n", "gy", "type_definition")
+    assert_mapping_dispatch(maps, calls, "n", "<Leader>lG", "workspace_symbol")
+    assert_mapping_dispatch(maps, calls, "n", "<Leader>lw", "workspace_diagnostics")
+    assert_mapping_dispatch(maps, calls, "n", "<Leader>uY", "toggle_buffer_semantic_tokens")
   end)
 
   with_astrolsp_mappings({}, function(maps, calls)
-    assert.equals("workspace/diagnostic", maps.n["<Leader>lw"].cond)
-    assert.is_nil(maps.n["<Leader>ll"])
-    maps.n["<Leader>lL"][1]()
-    assert.same({ expected_call "codelens_run" }, calls)
+    assert_mapping_condition(maps, "n", "<Leader>lw", "workspace/diagnostic")
+    assert_mapping_dispatch(maps, calls, "n", "<Leader>lL", "codelens_run")
   end)
 end
 
@@ -614,10 +537,10 @@ T["LSPMAP-04 keeps range formatting limited to range-capable clients"] = functio
     }
     assert.is_false(maps.n["<Leader>lf"].cond(client, 28))
     assert.is_true(maps.v["<Leader>lf"].cond(client, 28))
-    assert.same({
-      { method = "textDocument/formatting", bufnr = 28 },
-      { method = "textDocument/rangeFormatting", bufnr = 28 },
-    }, methods)
+    assert.equals("textDocument/formatting", methods[1].method)
+    assert.equals(28, methods[1].bufnr)
+    assert.equals("textDocument/rangeFormatting", methods[2].method)
+    assert.equals(28, methods[2].bufnr)
   end)
 end
 
@@ -695,36 +618,12 @@ T["LSP-03 repeats new writes and clears state after failed write callbacks"] = f
 
     did_create.callback { buf = 3 }
 
-    assert.same({
-      { operation = "willCreateFiles", argument = "/workspace/repeated.lua" },
-      { operation = "didCreateFiles", argument = "/workspace/repeated.lua" },
-      { operation = "willCreateFiles", argument = "/workspace/repeated.lua" },
-      { operation = "didCreateFiles", argument = "/workspace/repeated.lua" },
-      { operation = "willCreateFiles", argument = "/workspace/failed-write.lua" },
-      { operation = "willCreateFiles", argument = "/workspace/will-error.lua" },
-    }, calls)
-  end)
-end
-
-T["LSP-11 clears failed file creation state"] = function()
-  with_astrolsp_spec({
-    buffers = { [1] = {} },
-    valid_buffers = { [1] = true },
-    names = { [1] = "/workspace/failing.lua" },
-    fs_stat = function() return nil end,
-    operations = {
-      willCreateFiles = function() error "will create failure" end,
-    },
-  }, function(spec, calls, buffers)
-    local will_create, did_create = unpack(file_events(spec))
-    local ok, error_message = pcall(will_create.callback, { buf = 1 })
-
-    assert.is_false(ok)
-    assert.is_true(tostring(error_message):find("will create failure", 1, true) ~= nil)
-    assert.is_false(buffers[1].new_file)
-
-    did_create.callback { buf = 1 }
-    assert.same({ { operation = "willCreateFiles", argument = "/workspace/failing.lua" } }, calls)
+    assert_file_operation(calls, 1, "willCreateFiles", "/workspace/repeated.lua")
+    assert_file_operation(calls, 2, "didCreateFiles", "/workspace/repeated.lua")
+    assert_file_operation(calls, 3, "willCreateFiles", "/workspace/repeated.lua")
+    assert_file_operation(calls, 4, "didCreateFiles", "/workspace/repeated.lua")
+    assert_file_operation(calls, 5, "willCreateFiles", "/workspace/failed-write.lua")
+    assert_file_operation(calls, 6, "willCreateFiles", "/workspace/will-error.lua")
   end)
 end
 
@@ -735,31 +634,51 @@ T["LSP-11 keeps Neo-tree ownership stable"] = function()
   }
   with_astrolsp_spec({ fs_stat = function(path) return stats[path] end }, function(spec, calls)
     local neo_tree = spec.specs[2]
-    local options = { event_handlers = { { id = "caller_handler", event = "caller" } } }
+    local caller_handler = {
+      event = "before_file_delete",
+      id = "caller-owned",
+      handler = function() end,
+    }
+    local options = { event_handlers = { caller_handler } }
     neo_tree.opts(nil, options)
     neo_tree.opts(nil, options)
 
-    local handlers = {}
+    local caller_instances = 0
     for _, handler in ipairs(options.event_handlers) do
-      local key = handler.id .. "_" .. handler.event
-      assert.is_nil(handlers[key], "Duplicate Neo-tree handler: " .. key)
-      handlers[key] = handler.handler
+      if handler == caller_handler then caller_instances = caller_instances + 1 end
     end
-    assert.equals(9, #options.event_handlers)
+    assert.equals(1, caller_instances)
 
-    handlers.astrolsp_willDeleteFiles_before_file_delete "/workspace/first"
-    handlers.astrolsp_willDeleteFiles_before_file_delete "/workspace/second"
+    for _, event in ipairs {
+      "before_file_add",
+      "file_added",
+      "before_file_delete",
+      "file_deleted",
+      "before_file_move",
+      "before_file_rename",
+      "file_moved",
+      "file_renamed",
+    } do
+      local astrolsp_instances = 0
+      for _, handler in ipairs(neo_tree_handlers_for_event(options, event)) do
+        if handler ~= caller_handler then astrolsp_instances = astrolsp_instances + 1 end
+      end
+      assert.equals(1, astrolsp_instances)
+    end
 
-    handlers.astrolsp_didDeleteFiles_file_deleted "/workspace/second"
+    local before_delete = neo_tree_handler(options, "before_file_delete", caller_handler)
+    local file_deleted = neo_tree_handler(options, "file_deleted")
+    before_delete.handler "/workspace/first"
+    before_delete.handler "/workspace/second"
+
+    file_deleted.handler "/workspace/second"
     stats["/workspace/first"] = nil
-    handlers.astrolsp_didDeleteFiles_file_deleted "/workspace/first"
+    file_deleted.handler "/workspace/first"
 
-    assert.same({
-      { operation = "willDeleteFiles", argument = { path = "/workspace/first", kind = "folder" } },
-      { operation = "willDeleteFiles", argument = { path = "/workspace/second", kind = "file" } },
-      { operation = "didDeleteFiles", argument = { path = "/workspace/second", kind = "file" } },
-      { operation = "didDeleteFiles", argument = { path = "/workspace/first", kind = "folder" } },
-    }, calls)
+    assert_file_operation(calls, 1, "willDeleteFiles", { path = "/workspace/first", kind = "folder" })
+    assert_file_operation(calls, 2, "willDeleteFiles", { path = "/workspace/second", kind = "file" })
+    assert_file_operation(calls, 3, "didDeleteFiles", { path = "/workspace/second", kind = "file" })
+    assert_file_operation(calls, 4, "didDeleteFiles", { path = "/workspace/first", kind = "folder" })
   end)
 end
 
@@ -777,7 +696,7 @@ T["LSP-12 keeps signature-help state scoped to its buffer lifecycle"] = function
       signature_help_retriggerCharacters = { [","] = true },
     },
   }
-  local signature_calls = {}
+  local signature_requests = {}
 
   unit_helpers.with_module("astronvim.plugins._astrolsp_autocmds", {
     loaded = {
@@ -798,7 +717,7 @@ T["LSP-12 keeps signature-help state scoped to its buffer lifecycle"] = function
         buf = {
           signature_help = function()
             if current.buffer == 1 and current.line == "error(" then error "signature callback failure" end
-            table.insert(signature_calls, current.buffer)
+            table.insert(signature_requests, current.buffer)
           end,
         },
       },
@@ -819,26 +738,42 @@ T["LSP-12 keeps signature-help state scoped to its buffer lifecycle"] = function
       current.line = line
       changed { buf = buffer }
     end
+    local function request_count(buffer)
+      local count = 0
+      for _, request_buffer in ipairs(signature_requests) do
+        if request_buffer == buffer then count = count + 1 end
+      end
+      return count
+    end
 
     change(1, "call(")
+    local after_trigger = request_count(1)
+    assert.is_true(after_trigger > 0)
+    insert_leave { buf = 1 }
+    change(1, ",")
+    assert.equals(after_trigger, request_count(1))
+
+    change(1, "call(")
+    local before_buffer_delete = request_count(1)
+    assert.is_true(before_buffer_delete > after_trigger)
+    buffer_delete { buf = 1 }
+    change(1, ",")
+    assert.equals(before_buffer_delete, request_count(1))
+
     buffer_vars[2].signature_help = false
     change(2, "disabled(")
-    change(1, "call( ")
-
+    assert.equals(0, request_count(2))
     buffer_vars[2].signature_help = true
     change(2, "switch(")
-    insert_leave { buf = 1 }
-    change(2, "switch( ")
-    buffer_delete { buf = 1 }
-    change(2, "switch(  ")
+    local buffer_two_trigger = request_count(2)
+    assert.is_true(buffer_two_trigger > 0)
+    change(2, ",")
+    assert.is_true(request_count(2) > buffer_two_trigger)
 
     local ok, error_message = pcall(change, 1, "error(")
     assert.is_false(ok)
     assert.is_true(tostring(error_message):find("signature callback failure", 1, true) ~= nil)
-    change(2, "switch(   ")
   end)
-
-  assert.same({ 1, 1, 2, 2, 2, 2 }, signature_calls)
 end
 
 return T

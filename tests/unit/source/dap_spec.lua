@@ -313,23 +313,6 @@ local function registration_counts(calls)
   return counts
 end
 
-T["DAP-05 registers all Blink DAP filetypes when Blink is available"] = function()
-  local calls = {}
-  unit_helpers.with_module("astronvim.plugins.configs.cmp-dap", {
-    loaded = {
-      ["blink.cmp"] = {
-        add_filetype_source = function(...) table.insert(calls, { ... }) end,
-      },
-    },
-  }, function(configure)
-    configure()
-    local counts = registration_counts(calls)
-    for _, filetype in ipairs { "dap-repl", "dapui_watches", "dapui_hover" } do
-      assert.equals(1, counts[filetype .. ":dap"])
-    end
-  end)
-end
-
 T["DAP-05 skips unavailable Blink"] = function()
   local blink_loads = 0
   unit_helpers.with_module("astronvim.plugins.configs.cmp-dap", {

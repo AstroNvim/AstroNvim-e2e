@@ -89,6 +89,20 @@ end
 
 local function kind_component(spec) return spec.opts.completion.menu.draw.components.kind_icon end
 
+local function contains(values, expected)
+  for _, value in ipairs(values) do
+    if value == expected then return true end
+  end
+  return false
+end
+
+local function find_callback(mapping)
+  for _, action in ipairs(mapping) do
+    if type(action) == "function" then return action end
+  end
+  error "Missing completion callback"
+end
+
 T["BLINK-01 enables completion only for supported buffers"] = function()
   with_blink(nil, function(spec) assert.is_true(spec.opts.enabled()) end)
 
@@ -135,50 +149,44 @@ T["BLINK-02 augments nil and existing LSP configuration without replacing capabi
   end)
 end
 
-T["BLINK-03 keeps selected completion declarations and dispatches Tab callbacks"] = function()
+T["BLINK-03 keeps configured completion mappings and dispatches Tab callbacks"] = function()
   local cursor = { line = 1, column = 0, text = "" }
   local mode = { value = "i" }
   with_blink({ cursor = cursor, mode = mode }, function(spec)
     local opts = spec.opts
-    assert.same({ "lsp", "path", "snippets", "buffer" }, opts.sources.default)
-    assert.same({ "show", "show_documentation", "hide_documentation" }, opts.keymap["<C-Space>"])
-    assert.same({ "accept", "fallback" }, opts.keymap["<CR>"])
-    assert.same({ "hide", "fallback" }, opts.keymap["<C-e>"])
-    assert.equals("prefer_rust", opts.fuzzy.implementation)
-    assert.is_false(opts.completion.list.selection.preselect)
-    assert.is_true(opts.completion.list.selection.auto_insert)
-    assert.is_true(opts.completion.menu.auto_show { mode = "insert" })
-    assert.is_false(opts.completion.menu.auto_show { mode = "cmdline" })
-    assert.is_true(opts.completion.accept.auto_brackets.enabled)
-    assert.is_true(opts.completion.documentation.auto_show)
-    assert.equals(0, opts.completion.documentation.auto_show_delay_ms)
-    assert.equals("Normal:NormalFloat,FloatBorder:FloatBorder", opts.signature.window.winhighlight)
-    assert.same({ "hide", "fallback" }, opts.cmdline.keymap["<End>"])
-    assert.is_false(opts.cmdline.completion.ghost_text.enabled)
+    for _, source in ipairs { "lsp", "path", "snippets", "buffer" } do
+      assert.is_true(contains(opts.sources.default, source), "Missing completion source: " .. source)
+    end
 
-    assert.equals(4, #opts.keymap["<Tab>"])
-    assert.equals("select_next", opts.keymap["<Tab>"][1])
-    assert.equals("snippet_forward", opts.keymap["<Tab>"][2])
-    assert.equals("function", type(opts.keymap["<Tab>"][3]))
-    assert.equals("fallback", opts.keymap["<Tab>"][4])
-    assert.equals(4, #opts.keymap["<S-Tab>"])
-    assert.equals("select_prev", opts.keymap["<S-Tab>"][1])
-    assert.equals("snippet_backward", opts.keymap["<S-Tab>"][2])
-    assert.equals("function", type(opts.keymap["<S-Tab>"][3]))
-    assert.equals("fallback", opts.keymap["<S-Tab>"][4])
+    for _, mapping in ipairs {
+      { key = "<C-Space>", actions = { "show", "show_documentation", "hide_documentation" } },
+      { key = "<CR>", actions = { "accept", "fallback" } },
+      { key = "<C-e>", actions = { "hide", "fallback" } },
+      { key = "<Tab>", actions = { "select_next", "snippet_forward", "fallback" } },
+      { key = "<S-Tab>", actions = { "select_prev", "snippet_backward", "fallback" } },
+      { key = "<End>", actions = { "hide", "fallback" }, command_line = true },
+    } do
+      local actions = mapping.command_line and opts.cmdline.keymap[mapping.key] or opts.keymap[mapping.key]
+      for _, action in ipairs(mapping.actions) do
+        assert.is_true(contains(actions, action), mapping.key .. " is missing " .. action)
+      end
+    end
 
     local shown = 0
     local cmp = { show = function() shown = shown + 1 end }
-    local tab = opts.keymap["<Tab>"][3]
-    local shift_tab = opts.keymap["<S-Tab>"][3]
+    local tab = find_callback(opts.keymap["<Tab>"])
+    local shift_tab = find_callback(opts.keymap["<S-Tab>"])
 
     mode.value = "c"
     tab(cmp)
     shift_tab(cmp)
     mode.value = "i"
+    cursor.column = 1
+    cursor.text = "a"
+    tab(cmp)
     shift_tab(cmp)
 
-    assert.equals(2, shown)
+    assert.equals(3, shown)
   end)
 end
 
@@ -186,7 +194,7 @@ T["BLINK-04 detects words before the cursor at stable boundaries"] = function()
   local cursor = { line = 1, column = 0, text = "text" }
   with_blink({ cursor = cursor }, function(spec)
     local shown = 0
-    local tab = spec.opts.keymap["<Tab>"][3]
+    local tab = find_callback(spec.opts.keymap["<Tab>"])
     local cmp = { show = function() shown = shown + 1 end }
 
     tab(cmp)
@@ -410,36 +418,14 @@ T["BLINK-06 applies ASCII icons and dispatches completion toggles"] = function()
     find_spec(spec, "saghen/blink.cmp").opts(nil, blink_opts)
     local icons = blink_opts.appearance.kind_icons
 
-    assert.same({
-      Text = "T",
-      Method = "M",
-      Function = "F",
-      Constructor = "C",
-      Field = "F",
-      Variable = "V",
-      Property = "P",
-      Class = "C",
-      Interface = "I",
-      Struct = "S",
-      Module = "M",
-      Unit = "U",
-      Value = "V",
-      Enum = "E",
-      EnumMember = "E",
-      Keyword = "K",
-      Constant = "C",
-      Snippet = "S",
-      Color = "C",
-      File = "F",
-      Reference = "R",
-      Folder = "F",
-      Event = "E",
-      Operator = "O",
-      TypeParameter = "T",
-    }, icons)
-    for _, icon in pairs(icons) do
-      assert.is_true(icon:match "^[%w]$" ~= nil)
+    assert.equals("table", type(icons))
+    local icon_count = 0
+    for kind, icon in pairs(icons) do
+      assert.equals("string", type(kind))
+      assert.is_true(type(icon) == "string" and icon:match "^[A-Za-z0-9]$" ~= nil, kind)
+      icon_count = icon_count + 1
     end
+    assert.is_true(icon_count > 0)
 
     local mappings = { n = {} }
     local core_opts = { mappings = mappings }

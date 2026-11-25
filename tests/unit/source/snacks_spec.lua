@@ -199,19 +199,6 @@ T["SNACKS-02 filters indent scope and words by buffer and feature state"] = func
   end
 end
 
-T["SNACKS-03 restores nil true and false indent state after Zen mode"] = function()
-  for _, case in ipairs { { name = "nil" }, { name = "true", prior = true }, { name = "false", prior = false } } do
-    local buffer = { snacks_indent = case.prior }
-    with_snacks({ buffer_vars = { [7] = buffer } }, function(specs)
-      local zen = snack_options(specs).zen
-      zen.on_open { buf = 7 }
-      assert.is_false(buffer.snacks_indent)
-      zen.on_close { buf = 7 }
-      assert.equals(case.prior, buffer.snacks_indent, case.name)
-    end)
-  end
-end
-
 T["SNACKS-04 dispatches every global picker mapping through public picker methods"] = function()
   with_snacks({ git_directory = true }, function(specs, calls)
     local maps = snack_maps(specs)

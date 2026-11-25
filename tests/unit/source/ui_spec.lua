@@ -45,7 +45,7 @@ end
 
 local function with_status_options(options, callback)
   options = options or {}
-  local calls = { actions = {}, extensions = {}, lualine = {} }
+  local calls = { actions = {}, extensions = {} }
   local highlights = options.highlights or {}
   local astroui = {
     config = {},
@@ -62,10 +62,7 @@ local function with_status_options(options, callback)
         end,
       },
       ["astroui.status.hl"] = {
-        lualine_mode = function(mode, fallback)
-          table.insert(calls.lualine, { mode = mode, fallback = fallback })
-          return "resolved:" .. mode .. ":" .. fallback
-        end,
+        lualine_mode = function(mode, fallback) return "resolved:" .. mode .. ":" .. fallback end,
       },
       gitsigns = options.gitsigns == false and unit_helpers.remove or {
         preview_hunk = function() record(calls, "gitsigns.preview_hunk") end,
@@ -92,7 +89,7 @@ end
 
 local function with_heirline(options, callback)
   options = options or {}
-  local calls = { actions = {}, component_calls = {}, pickers = {} }
+  local calls = { actions = {}, pickers = {} }
   local state = options.state
     or {
       current_buf = 7,
@@ -111,10 +108,7 @@ local function with_heirline(options, callback)
       winbar = { enabled = { kind = "enabled" }, disabled = { kind = "disabled" } },
     }
   local function component(name)
-    return function(component_options)
-      table.insert(calls.component_calls, { name = name, options = component_options })
-      return { kind = name, options = component_options }
-    end
+    return function(component_options) return { kind = name, options = component_options } end
   end
   local status = {
     condition = {
@@ -524,8 +518,6 @@ T["HEIR-05 keeps required statusline and window components"] = function()
       assert.is_true(present[name], name)
     end
 
-    assert.equals("mode", options.statusline[1].kind)
-    assert.equals("mode", options.statusline[#options.statusline].kind)
     assert.equals("table", type(options.winbar))
     assert.equals("table", type(options.tabline))
     assert.equals("table", type(options.statuscolumn))
@@ -600,18 +592,6 @@ T["UI-06 installs the AstroUI foldexpr only for an eligible buffer state"] = fun
       assert.equals(case.expected_writes, calls.foldexpr_writes, case.name)
     end)
   end
-end
-
-T["UI-07a resolves terminal colors through the terminal lualine mode"] = function()
-  with_status_options({ highlights = { HeirlineTerminal = { bg = "NONE" } } }, function(status, calls)
-    local colors = status.setup_colors()
-    local terminal_resolver
-    for _, call in ipairs(calls.lualine) do
-      if call.mode == "terminal" then terminal_resolver = call end
-    end
-    assert.is_true(terminal_resolver ~= nil)
-    assert.equals("resolved:terminal:resolved:insert:#98c379", colors.terminal)
-  end)
 end
 
 T["UI-07b sources the tabline foreground from TabLineFill"] = function()

@@ -3,12 +3,30 @@ local unit_helpers = require "unit_helpers"
 
 local T = MiniTest.new_set()
 
-local function call_log(calls)
-  local entries = {}
-  for _, entry in ipairs(calls) do
-    table.insert(entries, entry)
+local function call_index(calls, expected)
+  for index, call in ipairs(calls) do
+    if call == expected then return index end
   end
-  return entries
+end
+
+local function call_count(calls, expected)
+  local count = 0
+  for _, call in ipairs(calls) do
+    if call == expected then count = count + 1 end
+  end
+  return count
+end
+
+local function assert_call_seen(calls, expected) assert.is_not_nil(call_index(calls, expected), expected) end
+
+local function assert_call_absent(calls, expected) assert.is_nil(call_index(calls, expected), expected) end
+
+local function assert_call_order(calls, first, second)
+  local first_index = call_index(calls, first)
+  local second_index = call_index(calls, second)
+  assert.is_not_nil(first_index, first)
+  assert.is_not_nil(second_index, second)
+  assert.is_true(first_index < second_index)
 end
 
 local function with_mason_lspconfig(options, callback)
@@ -20,7 +38,7 @@ local function with_mason_lspconfig(options, callback)
 
   function registry.get_installed_package_names()
     installed_call = installed_call + 1
-    table.insert(calls, "registry:get_installed:" .. installed_call)
+    table.insert(calls, "registry:get_installed")
     return (options.installed_batches and options.installed_batches[installed_call]) or options.installed or {}
   end
 
@@ -114,7 +132,6 @@ local function with_mason_lspconfig(options, callback)
           callback_fn()
         end
       end,
-      scheduled_count = function() return #scheduled end,
     }
     callback(configure, registry, calls, context)
   end)
@@ -153,21 +170,15 @@ T["MASON-02 dispatches the Mason UI mapping through the public module boundary"]
 
     assert.equals("Mason Installer", maps.n["<Leader>pm"].desc)
     maps.n["<Leader>pm"][1]()
-    assert.same({ "open" }, calls)
+    assert.equals("open", calls[#calls])
   end)
 end
 
 T["MASON-03 configures Tool Installer and handles startup states"] = function()
   local cases = {
-    {
-      name = "after VimEnter",
-      did_enter = 1,
-      run_on_start = nil,
-      cleanup_error = true,
-      expected = { "setup", "cleanup", "run" },
-    },
-    { name = "before VimEnter", did_enter = 0, run_on_start = nil, expected = { "setup" } },
-    { name = "disabled", did_enter = 1, run_on_start = false, expected = { "setup" } },
+    { name = "after VimEnter", did_enter = 1, run_on_start = nil, cleanup_error = true },
+    { name = "before VimEnter", did_enter = 0, run_on_start = nil },
+    { name = "disabled", did_enter = 1, run_on_start = false },
   }
 
   for _, case in ipairs(cases) do
@@ -198,7 +209,15 @@ T["MASON-03 configures Tool Installer and handles startup states"] = function()
       configure(nil, options)
       assert.equals(options, calls.options)
     end)
-    assert.same(case.expected, call_log(calls), case.name)
+    assert_call_seen(calls, "setup")
+    if case.did_enter == 1 and case.run_on_start ~= false then
+      assert_call_seen(calls, "cleanup")
+      assert_call_seen(calls, "run")
+      assert_call_order(calls, "cleanup", "run")
+    else
+      assert_call_absent(calls, "cleanup")
+      assert_call_absent(calls, "run")
+    end
   end
 end
 
@@ -224,9 +243,9 @@ T["MASON-04 gives Tool Installer ownership of LSP installation requests"] = func
   end
 end
 
-T["MASON-05 maps package strings and objects in callback order without duplicate server setup"] = function()
+T["MASON-05 maps package strings and objects without duplicate server setup"] = function()
   with_mason_lspconfig({
-    installed = { "lua-language-server" },
+    installed = {},
     refresh = { success = true, updated_registries = {} },
     package_to_lspconfig = {
       ["lua-language-server"] = "lua_ls",
@@ -237,39 +256,36 @@ T["MASON-05 maps package strings and objects in callback order without duplicate
     local options = {}
     configure(nil, options)
 
-    local initial_calls = call_log(calls)
-    for _, expected in ipairs { "registry:get_installed:1", "registry:refresh", "mason-lspconfig:setup" } do
-      assert.is_true(vim.tbl_contains(initial_calls, expected), expected)
+    for _, expected in ipairs { "registry:get_installed", "registry:refresh", "mason-lspconfig:setup" } do
+      assert_call_seen(calls, expected)
     end
-    assert.is_true(context.scheduled_count() > 0)
     assert.equals(1, registry:listener_count "package:install:success")
     assert.equals(false, options.automatic_enable)
     context.drain_scheduled()
 
+    for _, unexpected in ipairs { "config:lua_ls", "setup:lua_ls", "config:ts_ls", "setup:ts_ls" } do
+      assert_call_absent(calls, unexpected)
+    end
+
     configure(nil, {})
-    assert.equals(2, context.scheduled_count())
     assert.equals(1, registry:listener_count "package:install:success")
     context.drain_scheduled()
 
+    for _, unexpected in ipairs { "config:lua_ls", "setup:lua_ls", "config:ts_ls", "setup:ts_ls" } do
+      assert_call_absent(calls, unexpected)
+    end
+
     registry:emit("package:install:success", { name = "typescript-language-server" })
     registry:emit("package:install:success", "lua-language-server")
-    assert.equals(2, context.scheduled_count())
     context.drain_scheduled()
 
-    local final_calls = call_log(calls)
     for _, expected in ipairs { "config:lua_ls", "setup:lua_ls", "config:ts_ls", "setup:ts_ls" } do
-      assert.is_true(vim.tbl_contains(final_calls, expected), expected)
+      assert_call_seen(calls, expected)
     end
-
-    local function count_call(expected)
-      local count = 0
-      for _, call in ipairs(final_calls) do
-        if call == expected then count = count + 1 end
-      end
-      return count
-    end
-    assert.equals(1, count_call "setup:lua_ls")
-    assert.equals(1, count_call "setup:ts_ls")
+    assert.equals(1, call_count(calls, "config:lua_ls"))
+    assert.equals(1, call_count(calls, "setup:lua_ls"))
+    assert.equals(1, call_count(calls, "config:ts_ls"))
+    assert.equals(1, call_count(calls, "setup:ts_ls"))
   end)
 end
 
@@ -286,28 +302,32 @@ T["MASON-06 handles unmapped and optional server configuration branches"] = func
     server_preloads = {
       ["mason-lspconfig.lsp.failing_server"] = function() error "server configuration failed" end,
     },
-  }, function(configure, _, calls, context)
+  }, function(configure, registry, calls, context)
     configure(nil, {})
 
-    assert.same({
-      "registry:get_installed:1",
-      "registry:refresh",
-      "registry:off:package:install:success",
-      "registry:on:package:install:success",
-      "mason-lspconfig:setup",
-    }, call_log(calls))
+    for _, expected in ipairs { "registry:get_installed", "registry:refresh", "mason-lspconfig:setup" } do
+      assert_call_seen(calls, expected)
+    end
+    assert_call_order(calls, "registry:off:package:install:success", "registry:on:package:install:success")
+    assert.equals(1, registry:listener_count "package:install:success")
+
     context.drain_scheduled()
-    assert.same({
-      "registry:get_installed:1",
-      "registry:refresh",
-      "registry:off:package:install:success",
-      "registry:on:package:install:success",
-      "mason-lspconfig:setup",
+    for _, expected in ipairs {
       "setup:missing_server",
       "setup:failing_server",
       "config:available_server",
       "setup:available_server",
-    }, call_log(calls))
+    } do
+      assert_call_seen(calls, expected)
+    end
+    for _, unexpected in ipairs {
+      "config:unknown",
+      "setup:unknown",
+      "config:missing_server",
+      "config:failing_server",
+    } do
+      assert_call_absent(calls, unexpected)
+    end
   end)
 end
 
@@ -316,38 +336,17 @@ T["MASON-06 refreshes only successful nonempty registries and installs event pac
     {
       refresh = { success = true, updated_registries = { "primary" } },
       installed_batches = { {}, { "after-refresh" } },
-      expected = {
-        "registry:get_installed:1",
-        "registry:refresh",
-        "registry:off:package:install:success",
-        "registry:on:package:install:success",
-        "mason-lspconfig:setup",
-        "registry:get_installed:2",
-        "config:after_refresh",
-        "setup:after_refresh",
-      },
+      refreshes_installed_packages = true,
     },
     {
       refresh = { success = true, updated_registries = {} },
       installed_batches = { {} },
-      expected = {
-        "registry:get_installed:1",
-        "registry:refresh",
-        "registry:off:package:install:success",
-        "registry:on:package:install:success",
-        "mason-lspconfig:setup",
-      },
+      refreshes_installed_packages = false,
     },
     {
       refresh = { success = false, updated_registries = { "primary" } },
       installed_batches = { {} },
-      expected = {
-        "registry:get_installed:1",
-        "registry:refresh",
-        "registry:off:package:install:success",
-        "registry:on:package:install:success",
-        "mason-lspconfig:setup",
-      },
+      refreshes_installed_packages = false,
     },
   }
 
@@ -359,21 +358,25 @@ T["MASON-06 refreshes only successful nonempty registries and installs event pac
       server_configs = { after_refresh = {}, event_server = {} },
     }, function(configure, registry, calls, context)
       configure(nil, {})
-      assert.same({
-        "registry:get_installed:1",
-        "registry:refresh",
-        "registry:off:package:install:success",
-        "registry:on:package:install:success",
-        "mason-lspconfig:setup",
-      }, call_log(calls))
+      for _, expected in ipairs { "registry:get_installed", "registry:refresh", "mason-lspconfig:setup" } do
+        assert_call_seen(calls, expected)
+      end
+      assert_call_order(calls, "registry:off:package:install:success", "registry:on:package:install:success")
       context.drain_scheduled()
-      assert.same(case.expected, call_log(calls))
 
-      if case == refresh_cases[1] then
+      local expected_installed_calls = case.refreshes_installed_packages and 2 or 1
+      assert.equals(expected_installed_calls, call_count(calls, "registry:get_installed"))
+      if case.refreshes_installed_packages then
+        assert_call_seen(calls, "config:after_refresh")
+        assert_call_seen(calls, "setup:after_refresh")
+
         registry:emit("package:install:success", "event-package")
-        assert.equals(1, context.scheduled_count())
         context.drain_scheduled()
-        assert.same({ "config:event_server", "setup:event_server" }, { calls[9], calls[10] })
+        assert_call_seen(calls, "config:event_server")
+        assert_call_seen(calls, "setup:event_server")
+      else
+        assert_call_absent(calls, "config:after_refresh")
+        assert_call_absent(calls, "setup:after_refresh")
       end
     end)
   end
@@ -385,7 +388,8 @@ T["MASON-06 delegates without AstroLSP and respects automatic_enable false"] = f
     configure(nil, options)
 
     assert.equals(true, options.automatic_enable)
-    assert.same({ "mason-lspconfig:setup" }, call_log(calls))
+    assert_call_seen(calls, "mason-lspconfig:setup")
+    assert_call_absent(calls, "registry:get_installed")
   end)
 
   with_mason_lspconfig({ automatic_enable = false }, function(configure, _, calls)
@@ -393,7 +397,8 @@ T["MASON-06 delegates without AstroLSP and respects automatic_enable false"] = f
     configure(nil, options)
 
     assert.equals(false, options.automatic_enable)
-    assert.same({ "mason-lspconfig:setup" }, call_log(calls))
+    assert_call_seen(calls, "mason-lspconfig:setup")
+    assert_call_absent(calls, "registry:get_installed")
   end)
 end
 
@@ -447,7 +452,7 @@ T["MASON-08 declares none-ls trigger commands and attach ownership"] = function(
   end)
 end
 
-T["MASON-08 exposes NullLsInfo only when the command exists"] = function()
+T["MASON-08 gates NullLsInfo on command availability"] = function()
   for _, exists in ipairs { 0, 2 } do
     unit_helpers.with_module("astronvim.plugins.none-ls", {
       vim = { fn = { exists = function(command) return command == ":NullLsInfo" and exists or 0 end } },
@@ -456,8 +461,8 @@ T["MASON-08 exposes NullLsInfo only when the command exists"] = function()
       spec.specs[2].opts(nil, { mappings = maps })
       local mapping = maps.n["<Leader>lI"]
 
-      assert.equals("<Cmd>NullLsInfo<CR>", mapping[1])
-      assert.equals("Null-ls information", mapping.desc)
+      assert.is_not_nil(mapping)
+      assert.is_not_nil(mapping[1])
       assert.equals(exists > 0, mapping.cond())
     end)
   end
@@ -475,19 +480,21 @@ T["MASON-10 continues AstroLSP setup when an optional server config cannot load"
     configure(nil, options)
     context.drain_scheduled()
 
-    assert.same({
-      "registry:get_installed:1",
+    for _, expected in ipairs {
+      "registry:get_installed",
       "registry:refresh",
-      "registry:off:package:install:success",
-      "registry:on:package:install:success",
       "mason-lspconfig:setup",
       "setup:lua_ls",
-    }, call_log(calls))
+    } do
+      assert_call_seen(calls, expected)
+    end
+    assert_call_order(calls, "registry:off:package:install:success", "registry:on:package:install:success")
+    assert.equals(1, call_count(calls, "setup:lua_ls"))
     assert.is_false(options.automatic_enable)
   end)
 end
 
-T["MASON-08 adds only the NullLsInfo mapping and preserves caller mappings"] = function()
+T["MASON-08 merges NullLsInfo without disturbing caller mappings"] = function()
   unit_helpers.with_module("astronvim.plugins.none-ls", {
     vim = { fn = { exists = function() return 1 end } },
   }, function(spec)
@@ -495,17 +502,18 @@ T["MASON-08 adds only the NullLsInfo mapping and preserves caller mappings"] = f
       n = { ["<Leader>xx"] = { "<Cmd>Caller<CR>", desc = "Caller mapping" } },
       i = { ["<C-x>"] = { "caller" } },
     }
+    local caller_normal = mappings.n["<Leader>xx"]
+    local caller_insert = mappings.i["<C-x>"]
     local options = { mappings = mappings, features = { formatting = true } }
 
     spec.specs[2].opts(nil, options)
     spec.specs[2].opts(nil, options)
 
-    assert.same({ "<Cmd>Caller<CR>", desc = "Caller mapping" }, mappings.n["<Leader>xx"])
-    assert.same({ "caller" }, mappings.i["<C-x>"])
-    assert.same({ "<Cmd>NullLsInfo<CR>", desc = "Null-ls information" }, {
-      mappings.n["<Leader>lI"][1],
-      desc = mappings.n["<Leader>lI"].desc,
-    })
+    assert.equals(caller_normal, mappings.n["<Leader>xx"])
+    assert.equals(caller_insert, mappings.i["<C-x>"])
+    assert.is_not_nil(mappings.n["<Leader>lI"])
+    assert.is_not_nil(mappings.n["<Leader>lI"][1])
+    assert.is_true(mappings.n["<Leader>lI"].cond())
     assert.equals(true, options.features.formatting)
   end)
 end

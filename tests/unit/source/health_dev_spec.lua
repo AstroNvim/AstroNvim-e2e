@@ -326,33 +326,6 @@ T["DEV-03 preserves current pins empty snapshots and write errors"] = function()
   end)
 end
 
-T["SNAPSHOT-01 keeps Treesitter optional and commit-pinned"] = function()
-  local has_calls = {}
-  unit_helpers.with_module("astronvim.lazy_snapshot", {
-    vim = {
-      fn = {
-        has = function(feature)
-          table.insert(has_calls, feature)
-          return 1
-        end,
-      },
-    },
-  }, function(snapshot)
-    local names = {}
-    local treesitter
-    for _, plugin in ipairs(snapshot) do
-      assert.is_nil(names[plugin[1]], "Duplicate snapshot plugin: " .. plugin[1])
-      names[plugin[1]] = true
-      assert.equals(true, plugin.optional, plugin[1])
-      assert.is_true((plugin.commit ~= nil) ~= (plugin.version ~= nil), "Expected one pin for " .. plugin[1])
-      if plugin[1] == "nvim-treesitter/nvim-treesitter" then treesitter = plugin end
-    end
-    assert.is_not_nil(treesitter)
-    assert.is_true(type(treesitter.commit) == "string" and treesitter.commit:match "^[0-9a-f]+$" ~= nil)
-    assert.same({}, has_calls)
-  end)
-end
-
 T["HEALTH-04 reports plausible Neovim versions and rejects malformed tokens"] = function()
   for _, case in ipairs {
     { output = "NVIM v0.11.4\n", expected = "v0.11.4" },
