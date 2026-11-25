@@ -96,10 +96,10 @@ local function initialize_fixture_repository(case)
 end
 
 local function delete_fixture_root(root)
-  if vim.fn.delete(root, "rf") == 0 then return end
-  if vim.uv.fs_lstat and vim.uv.fs_lstat(root) then
-    vim.wait(100)
+  for attempt = 1, 20 do
     if vim.fn.delete(root, "rf") == 0 then return end
+    if not vim.uv.fs_lstat or not vim.uv.fs_lstat(root) then break end
+    if attempt < 20 then vim.wait(100) end
   end
   return "Failed to delete test fixture root: " .. root
 end

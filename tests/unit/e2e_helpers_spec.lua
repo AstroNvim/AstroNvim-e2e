@@ -88,6 +88,7 @@ local function with_helpers(options, callback)
       fn = {
         delete = function(path)
           table.insert(state.deleted_roots, path)
+          if type(options.delete_result) == "function" then return options.delete_result(path, #state.deleted_roots) end
           return options.delete_result or 0
         end,
         fnameescape = function(path) return path end,
@@ -133,6 +134,7 @@ local function with_helpers(options, callback)
           table.insert(state.copied_files, { source, destination })
           return true
         end,
+        fs_lstat = function() return options.fs_lstat_result end,
         fs_mkdtemp = function(template)
           state.mkdtemp_template = template
           return root
@@ -333,6 +335,19 @@ T["TEST-05 reports root deletion failures after releasing child state"] = functi
     assert_contains(err, "Failed to delete test fixture root: " .. root)
     assert.same({ root }, state.deleted_roots)
     assert.is_false(fixture_available)
+  end)
+end
+
+T["TEST-05 retries fixture deletion while a Windows handle is released"] = function()
+  with_helpers({
+    fs_lstat_result = { type = "directory" },
+    delete_result = function(_, attempt) return attempt < 3 and 1 or 0 end,
+  }, function(helpers, state, root)
+    local child = helpers.start_child()
+    helpers.stop_child(child)
+
+    assert.same({ root, root, root }, state.deleted_roots)
+    assert.equals(2, state.wait_calls)
   end)
 end
 
