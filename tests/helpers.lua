@@ -318,8 +318,10 @@ function M.wait_until(child, expression, description, timeout)
     if ok and value == true then return true end
     if not ok then
       last_error = value
+      local job_id = child_job_id(child)
+      local dead_job = job_id and not job_is_alive(job_id)
       local running_ok, running = pcall(child.is_running)
-      if running_ok and not running then
+      if dead_job or (running_ok and not running) then
         error(("Child Neovim exited while waiting for %s: %s"):format(description, cleanup_error_message(value)), 0)
       end
     end

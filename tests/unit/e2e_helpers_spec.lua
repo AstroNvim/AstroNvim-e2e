@@ -26,7 +26,7 @@ local function with_helpers(options, callback)
     clock = 0,
   }
   local root = options.root or "/fixture-root"
-  if options.job_id then state.jobs_alive[options.job_id] = true end
+  if options.job_id then state.jobs_alive[options.job_id] = options.job_alive ~= false end
   for _, channel in ipairs(options.channels or {}) do
     if options.channel_alive ~= false then state.jobs_alive[channel.id] = true end
   end
@@ -191,6 +191,19 @@ T["WAIT-03 retains the final RPC error when a live child never becomes ready"] =
     assert_contains(err, "Timed out waiting for child readiness")
     assert_contains(err, "child RPC failed")
     assert.is_true(state.lua_get_calls > 1)
+    helpers.stop_child(child)
+  end)
+end
+
+T["WAIT-04 detects a dead child job even when the child wrapper still reports running"] = function()
+  with_helpers({ job_id = 42, job_alive = false, wait_values = { "error" } }, function(helpers, state)
+    local child = helpers.start_child()
+    local ok, err = pcall(helpers.wait_until, child, "ready", "child readiness", 100)
+
+    assert.is_false(ok)
+    assert_contains(err, "Child Neovim exited while waiting for child readiness")
+    assert_contains(err, "child RPC failed")
+    assert.is_true(#state.jobwait_ids >= 1)
     helpers.stop_child(child)
   end)
 end
