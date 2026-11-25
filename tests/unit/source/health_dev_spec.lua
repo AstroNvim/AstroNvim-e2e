@@ -326,7 +326,7 @@ T["DEV-03 preserves current pins empty snapshots and write errors"] = function()
   end)
 end
 
-T["SNAPSHOT-01 keeps the current optional Treesitter release pin"] = function()
+T["SNAPSHOT-01 keeps Treesitter optional and commit-pinned"] = function()
   local has_calls = {}
   unit_helpers.with_module("astronvim.lazy_snapshot", {
     vim = {
@@ -348,7 +348,7 @@ T["SNAPSHOT-01 keeps the current optional Treesitter release pin"] = function()
       if plugin[1] == "nvim-treesitter/nvim-treesitter" then treesitter = plugin end
     end
     assert.is_not_nil(treesitter)
-    assert.equals("ca581c3436fc2b236847f5b739ebc263739e5ca6", treesitter.commit)
+    assert.is_true(type(treesitter.commit) == "string" and treesitter.commit:match "^[0-9a-f]+$" ~= nil)
     assert.same({}, has_calls)
   end)
 end

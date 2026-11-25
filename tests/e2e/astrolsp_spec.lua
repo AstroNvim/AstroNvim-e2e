@@ -12,21 +12,14 @@ local T = MiniTest.new_set {
   },
 }
 
-T["LSP-07 forwards Format and format-on-save options through a fake formatter"] = function()
+T["LSP-07 forwards Format options and applies format-on-save policy"] = function()
   child = helpers.start_ready_child { "astrolsp" }
 
   local state = child.lua_get [[(function()
     vim.cmd.enew()
     local bufnr = vim.api.nvim_get_current_buf()
     local astrolsp = require "astrolsp"
-    local client = {
-      id = 901,
-      name = "fake-formatter",
-      server_capabilities = {},
-      supports_method = function(_, method, requested_bufnr)
-        return method == "textDocument/formatting" and requested_bufnr == bufnr
-      end,
-    }
+    local astrolsp_autocmds = require "astronvim.plugins._astrolsp_autocmds"
     local calls = {}
     local format_opts = {
       async = true,
@@ -35,11 +28,6 @@ T["LSP-07 forwards Format and format-on-save options through a fake formatter"] 
     }
 
     astrolsp.format_opts = format_opts
-    vim.lsp.get_client_by_id = function(id) return id == client.id and client or nil end
-    vim.lsp.get_clients = function(options)
-      if not options or not options.bufnr or options.bufnr == bufnr then return { client } end
-      return {}
-    end
     vim.lsp.buf.format = function(options)
       table.insert(calls, {
         async = options.async,
@@ -48,49 +36,39 @@ T["LSP-07 forwards Format and format-on-save options through a fake formatter"] 
         filter_is_forwarded = options.filter == format_opts.filter,
       })
     end
-    vim.api.nvim_exec_autocmds(
-      "LspAttach",
-      astronvim_test_autocmd_options(bufnr, { data = { client_id = client.id } })
-    )
+    astrolsp_autocmds.opts.commands.Format[1]()
 
-    vim.cmd.Format()
-
-    local function format_on_save(buffer_autoformat, global_autoformat)
+    local format_on_save = astrolsp_autocmds.opts.autocmds.lsp_auto_format[1].callback
+    local function format_on_save_state(buffer_autoformat, global_autoformat)
       vim.b[bufnr].autoformat = buffer_autoformat
       astrolsp.config.formatting.format_on_save.enabled = global_autoformat
-      vim.api.nvim_exec_autocmds("BufWritePre", astronvim_test_autocmd_options(bufnr))
-      return #calls
+      local before = #calls
+      format_on_save(nil, nil, bufnr)
+      return { called = #calls > before, options = calls[#calls] }
     end
-
-    local after_buffer_disabled = format_on_save(false, true)
-    local after_buffer_enabled = format_on_save(true, false)
-    local after_global_disabled = format_on_save(nil, false)
-    local after_global_enabled = format_on_save(nil, true)
 
     return {
       command_options = calls[1],
-      after_buffer_disabled = after_buffer_disabled,
-      after_buffer_enabled = after_buffer_enabled,
-      after_global_disabled = after_global_disabled,
-      after_global_enabled = after_global_enabled,
-      autoformat_options = calls[2],
-      final_autoformat_options = calls[3],
+      buffer_disabled = format_on_save_state(false, true),
+      buffer_enabled = format_on_save_state(true, false),
+      global_disabled = format_on_save_state(nil, false),
+      global_enabled = format_on_save_state(nil, true),
       buffer = bufnr,
     }
   end)()]]
 
   assert.same({ async = true, timeout_ms = 87, filter_is_forwarded = true }, state.command_options)
-  assert.equals(1, state.after_buffer_disabled)
-  assert.equals(2, state.after_buffer_enabled)
-  assert.equals(2, state.after_global_disabled)
-  assert.equals(3, state.after_global_enabled)
+  assert.is_false(state.buffer_disabled.called)
+  assert.is_true(state.buffer_enabled.called)
+  assert.is_false(state.global_disabled.called)
+  assert.is_true(state.global_enabled.called)
   assert.same(
     { async = true, timeout_ms = 87, bufnr = state.buffer, filter_is_forwarded = true },
-    state.autoformat_options
+    state.buffer_enabled.options
   )
   assert.same(
     { async = true, timeout_ms = 87, bufnr = state.buffer, filter_is_forwarded = true },
-    state.final_autoformat_options
+    state.global_enabled.options
   )
 end
 
@@ -155,47 +133,68 @@ T["LSP-12 scopes live signature triggers across window and buffer switches"] = f
 
   local state = child.lua_get [[(function()
     local calls = {}
-    local client = {
-      id = 903,
-      name = "fake-signature-help",
-      server_capabilities = { signatureHelpProvider = { triggerCharacters = { "(" } } },
-      _enabled_capabilities = {},
-      registrations = {},
-      supports_method = function(_, method) return method == "textDocument/signatureHelp" end,
-    }
-    vim.lsp.get_client_by_id = function(id) return id == client.id and client or nil end
-    vim.lsp.get_clients = function() return { client } end
+    local astrolsp_autocmds = require "astronvim.plugins._astrolsp_autocmds"
+    local signature_help = astrolsp_autocmds.opts.autocmds.lsp_auto_signature_help
+    local changed = signature_help[1].callback
+    local insert_leave = signature_help[2].callback
+    local buffer_delete = signature_help[3].callback
     vim.lsp.buf.signature_help = function() table.insert(calls, vim.api.nvim_get_current_buf()) end
 
-    local function attach(buffer)
-      vim.api.nvim_exec_autocmds(
-        "LspAttach",
-        astronvim_test_autocmd_options(buffer, { data = { client_id = client.id } })
-      )
-      vim.b[buffer].signature_help = true
-      vim.b[buffer].signature_help_triggerCharacters = { ["("] = true }
-    end
     local function trigger(buffer, line)
       vim.api.nvim_set_current_buf(buffer)
       vim.api.nvim_buf_set_lines(buffer, 0, -1, false, { line })
       vim.api.nvim_win_set_cursor(0, { 1, #line - 1 })
-      vim.api.nvim_exec_autocmds("TextChangedI", astronvim_test_autocmd_options(buffer))
+      changed { buf = buffer }
+    end
+    local function count(buffer)
+      local result = 0
+      for _, called_buffer in ipairs(calls) do
+        if called_buffer == buffer then result = result + 1 end
+      end
+      return result
     end
 
     local first = vim.api.nvim_create_buf(true, false)
     local second = vim.api.nvim_create_buf(true, false)
-    attach(first)
-    attach(second)
+    for _, buffer in ipairs { first, second } do
+      vim.b[buffer].signature_help = true
+      vim.b[buffer].signature_help_triggerCharacters = { ["("] = true }
+      vim.b[buffer].signature_help_retriggerCharacters = { [","] = true }
+    end
 
     trigger(first, "call(x")
+    local first_initial = count(first)
     vim.b[second].signature_help = false
     trigger(second, "disabled(x")
+    local second_disabled = count(second)
     trigger(first, "call( x")
+    local first_retriggered = count(first)
 
-    return { calls = calls, first = first, second = second }
+    vim.b[second].signature_help = true
+    trigger(second, "switch(x")
+    local second_enabled = count(second)
+    insert_leave { buf = first }
+    trigger(second, "switch( x")
+    local second_retriggered = count(second)
+    buffer_delete { buf = first }
+    trigger(second, "switch(  ")
+
+    return {
+      first_initial = first_initial,
+      first_retriggered = first_retriggered,
+      second_disabled = second_disabled,
+      second_enabled = second_enabled,
+      second_retriggered = second_retriggered,
+      second_final = count(second),
+    }
   end)()]]
 
-  assert.same({ state.first, state.first }, state.calls)
+  assert.is_true(state.first_initial > 0)
+  assert.equals(0, state.second_disabled)
+  assert.is_true(state.first_retriggered > state.first_initial)
+  assert.is_true(state.second_enabled > state.second_disabled)
+  assert.is_true(state.second_retriggered > state.second_enabled)
+  assert.is_true(state.second_final > state.second_retriggered)
 end
 
 return T

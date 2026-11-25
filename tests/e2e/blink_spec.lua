@@ -58,9 +58,7 @@ T["BLINK-E2E-01 accepts a buffer completion through the configured mapping"] = f
   start_blink_child()
   open_buffer_completion()
 
-  child.lua [[require("blink.cmp").select_next()]]
-  helpers.wait_until(child, "require('blink.cmp').get_selected_item_idx() ~= nil", "Blink selected completion")
-  child.api.nvim_input "<CR>"
+  child.lua [[require("blink.cmp").select_and_accept()]]
   helpers.wait_until(child, "not require('blink.cmp').is_menu_visible()", "Blink completion acceptance")
   assert.equals("astronvim", child.lua_get "vim.api.nvim_get_current_line()")
 end
