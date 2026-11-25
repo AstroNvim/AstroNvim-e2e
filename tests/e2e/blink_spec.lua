@@ -27,39 +27,29 @@ local function open_buffer_completion()
   child.type_keys "astr"
   helpers.wait_until(
     child,
-    "vim.api.nvim_get_mode().mode == 'i' and vim.api.nvim_get_current_line() == 'astr'",
-    "Blink input"
+    [[
+      vim.api.nvim_get_mode().mode == "i"
+        and vim.api.nvim_get_current_line() == "astr"
+        and next(vim.fn.maparg("<C-Space>", "i", false, true)) ~= nil
+    ]],
+    "Blink input and mapping"
   )
-  helpers.wait_until(
-    child,
-    "vim.fn.maparg('<C-Space>', 'i', false, true).rhs ~= '' or type(vim.fn.maparg('<C-Space>', 'i', false, true).callback) == 'function'",
-    "Blink completion mapping"
-  )
-  local mapping = child.lua_get [[(function()
-    local mapping = vim.fn.maparg("<C-Space>", "i", false, true)
-    return { rhs = mapping.rhs, callback = type(mapping.callback), desc = mapping.desc }
-  end)()]]
-  assert.is_true(mapping.callback == "function" or mapping.rhs ~= "", vim.inspect(mapping))
-  helpers.wait_until(
-    child,
-    [[(function()
-      local cmp = require("blink.cmp")
-      if cmp.is_active() then return true end
-      cmp.show()
-      return false
-    end)()]],
-    "Blink completion activation"
-  )
-  helpers.wait_until(child, "#require('blink.cmp').get_items() > 0", "Blink completion items")
+  child.type_keys "<C-Space>"
   helpers.wait_until(child, "require('blink.cmp').is_menu_visible()", "Blink completion menu")
+  helpers.wait_until(child, "#require('blink.cmp').get_items() > 0", "Blink completion items")
 end
 
 T["BLINK-E2E-01 accepts a buffer completion through the configured mapping"] = function()
   start_blink_child()
   open_buffer_completion()
 
-  child.lua [[require("blink.cmp").select_and_accept()]]
-  helpers.wait_until(child, "not require('blink.cmp').is_menu_visible()", "Blink completion acceptance")
+  child.type_keys "<C-n>"
+  child.type_keys "<CR>"
+  helpers.wait_until(
+    child,
+    "vim.api.nvim_get_current_line() == 'astronvim' and not require('blink.cmp').is_menu_visible()",
+    "Blink completion acceptance"
+  )
   assert.equals("astronvim", child.lua_get "vim.api.nvim_get_current_line()")
 end
 
@@ -67,8 +57,12 @@ T["BLINK-E2E-02 hides a completion through the configured mapping"] = function()
   start_blink_child()
   open_buffer_completion()
 
-  child.lua [[require("blink.cmp").hide()]]
-  helpers.wait_until(child, "not require('blink.cmp').is_menu_visible()", "Blink completion cleanup")
+  child.type_keys "<C-e>"
+  helpers.wait_until(
+    child,
+    "vim.api.nvim_get_current_line() == 'astr' and not require('blink.cmp').is_menu_visible()",
+    "Blink completion hide"
+  )
 end
 
 return T

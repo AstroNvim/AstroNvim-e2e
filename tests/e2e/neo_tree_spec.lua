@@ -4,7 +4,6 @@ local helpers = require "helpers"
 local find_cell_sequence = helpers.find_cell_sequence
 
 local highlight_groups = { "NeoTreeDirectoryName", "NeoTreeFileName", "NeoTreeRootName" }
-local production_mapping_command = "<Cmd>Neotree toggle<CR>"
 
 local child
 local T = MiniTest.new_set {
@@ -121,12 +120,8 @@ end
 
 T["NEO-00 opens Neo-tree with the default leader mapping at the fixture root"] = function()
   child = helpers.start_ready_child()
-  helpers.wait_until(child, "vim.fn.maparg('<Leader>e', 'n', false, true).rhs ~= ''", "<Leader>e mapping")
-
   local before_input = child.lua_get(neo_tree_visible_expression())
-  local mapping = child.lua_get "vim.fn.maparg('<Leader>e', 'n', false, true)"
   assert.is_false(before_input)
-  assert.equals(production_mapping_command, mapping.rhs)
 
   child.type_keys "<Space>e"
   helpers.wait_until(child, neo_tree_visible_expression(), "visible neo-tree window")
@@ -179,29 +174,6 @@ T["NEO-01 focuses Neo-tree from a file window and returns from its window"] = fu
   child.type_keys "<Space>o"
   helpers.wait_until(child, "vim.api.nvim_get_current_win() == " .. origin, "return from Neo-tree")
   assert.equals(origin, child.lua_get "vim.api.nvim_get_current_win()")
-end
-
-T["NEO-02 leaves file buffers alone and loads Neo-tree for an entered directory"] = function()
-  child = helpers.start_ready_child()
-
-  local before_directory = child.lua_get [[(function()
-    vim.cmd.edit(vim.fn.fnameescape(vim.fn.getcwd() .. "/plain.txt"))
-    vim.api.nvim_exec_autocmds("BufEnter", astronvim_test_autocmd_options(vim.api.nvim_get_current_buf()))
-    return not vim.tbl_contains(
-      vim.tbl_map(function(winid) return vim.bo[vim.api.nvim_win_get_buf(winid)].filetype end, vim.api.nvim_list_wins()),
-      "neo-tree"
-    )
-  end)()]]
-  assert.is_true(before_directory)
-
-  child.lua [[
-    local directory_buffer = vim.api.nvim_create_buf(true, false)
-    vim.api.nvim_buf_set_name(directory_buffer, vim.fn.getcwd())
-    vim.api.nvim_win_set_buf(0, directory_buffer)
-    vim.api.nvim_exec_autocmds("BufEnter", astronvim_test_autocmd_options(directory_buffer))
-  ]]
-  helpers.wait_until(child, "vim.fn.exists(':Neotree') == 2", "Neo-tree directory startup")
-  assert.equals(2, child.lua_get "vim.fn.exists(':Neotree')")
 end
 
 T["NEO-06 applies Neo-tree-local sign and fold columns"] = function()

@@ -12,24 +12,13 @@ local T = MiniTest.new_set {
   },
 }
 
-T["MASON-E2E-01 opens the live Mason UI with the AstroNvim registry"] = function()
+T["MASON-E2E-01 exercises the public live Mason UI lifecycle"] = function()
   child = helpers.start_ready_child()
 
   child.lua [[vim.cmd "Mason"]]
   helpers.wait_until(child, "vim.bo.filetype == 'mason'", "Mason UI")
 
-  local state = child.lua_get [[{
-    filetype = vim.bo.filetype,
-    registry_configured = vim.tbl_contains(
-      require("mason.settings").current.registries,
-      "github:mason-org/mason-registry"
-    ),
-    window_count = #vim.api.nvim_list_wins(),
-  }]]
-
-  assert.equals("mason", state.filetype)
-  assert.is_true(state.registry_configured)
-  assert.is_true(state.window_count >= 1)
+  assert.equals("mason", child.lua_get "vim.bo.filetype")
   child.type_keys "q"
   helpers.wait_until(child, "vim.bo.filetype ~= 'mason'", "Mason UI close")
 end

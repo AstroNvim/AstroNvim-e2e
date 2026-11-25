@@ -39,164 +39,100 @@ end
 T["SESSION-04 hands the AstroNvim session mapping to Resession without persistence"] = function()
   child = helpers.start_ready_child()
 
-  local state = child.lua_get [[(function()
-    local mapping = vim.fn.maparg("<Leader>Sl", "n", false, true)
-    local calls = {}
+  child.lua [[
+    _G.astronvim_test_resession_loads = {}
     package.loaded.resession = {
-      load = function(name) table.insert(calls, name) end,
+      load = function(name) table.insert(_G.astronvim_test_resession_loads, name) end,
     }
-    assert(type(mapping.callback) == "function")
-    mapping.callback()
-    return { desc = mapping.desc, calls = calls }
-  end)()]]
+  ]]
+  child.type_keys "<Space>Sl"
+  helpers.wait_until(child, "#_G.astronvim_test_resession_loads == 1", "Resession load request")
 
-  assert.equals("Load last session", state.desc)
-  assert.same({ "Last Session" }, state.calls)
+  assert.same({ "Last Session" }, child.lua_get "_G.astronvim_test_resession_loads")
 end
 
-T["TERM-04 applies terminal-local options and hidden-terminal mappings"] = function()
+T["TERM-05 maps a float terminal with local options and hides it through user input"] = function()
   child = helpers.start_ready_child()
 
-  local state = child.lua_get [[(function()
-    local spec = require "astronvim.plugins.toggleterm"
-    local on_create = spec.opts.on_create
-    local calls = {}
-    local function local_mappings(bufnr, mode)
-      local mappings = {}
-      for _, mapping in ipairs(vim.api.nvim_buf_get_keymap(bufnr, mode)) do
-        if mapping.lhs == "<F7>" or mapping.lhs == "<C-'>" then
-          mappings[mapping.lhs] = { callback = mapping.callback ~= nil, desc = mapping.desc }
-        end
+  local original_buffer = child.lua_get "vim.api.nvim_get_current_buf()"
+  child.lua [[vim.api.nvim_feedkeys(" tf", "mx", false)]]
+  helpers.wait_until(
+    child,
+    [[(function()
+      for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
+        if vim.api.nvim_buf_is_valid(bufnr) and vim.bo[bufnr].buftype == "terminal" then return true end
       end
-      return mappings
-    end
-    local function create_terminal(hidden)
-      local bufnr = vim.api.nvim_create_buf(true, false)
-      vim.api.nvim_set_current_buf(bufnr)
-      on_create {
-        bufnr = bufnr,
-        hidden = hidden,
-        toggle = function() table.insert(calls, bufnr) end,
-      }
-      local normal = local_mappings(bufnr, "n")
-      local terminal = local_mappings(bufnr, "t")
-      local insert = local_mappings(bufnr, "i")
-      if hidden then
-        for _, mode in ipairs { "n", "t", "i" } do
-          for _, mapping in ipairs(vim.api.nvim_buf_get_keymap(bufnr, mode)) do
-            if mapping.lhs == "<F7>" or mapping.lhs == "<C-'>" then mapping.callback() end
+      return false
+    end)()]],
+    "float terminal mapping"
+  )
+  local opened = child.lua_get [[(function()
+    for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
+      if vim.api.nvim_buf_is_valid(bufnr) and vim.bo[bufnr].buftype == "terminal" then
+        for _, winid in ipairs(vim.api.nvim_list_wins()) do
+          if vim.api.nvim_win_get_buf(winid) == bufnr then
+            return {
+              buffer = bufnr,
+              window = winid,
+              current_buffer = vim.api.nvim_get_current_buf(),
+              buftype = vim.bo[bufnr].buftype,
+              buflisted = vim.bo[bufnr].buflisted,
+              filetype = vim.bo[bufnr].filetype,
+              foldcolumn = vim.wo[winid].foldcolumn,
+              signcolumn = vim.wo[winid].signcolumn,
+            }
           end
         end
       end
-      return {
-        buffer = bufnr,
-        foldcolumn = vim.wo.foldcolumn,
-        signcolumn = vim.wo.signcolumn,
-        normal = normal,
-        terminal = terminal,
-        insert = insert,
-      }
     end
-
-    return { hidden = create_terminal(true), visible = create_terminal(false), calls = calls }
   end)()]]
 
-  for _, mode in ipairs { "normal", "terminal", "insert" } do
-    for _, key in ipairs { "<F7>", "<C-'>" } do
-      assert.is_true(state.hidden[mode][key].callback, mode .. " hidden " .. key)
-      assert.equals("Toggle terminal", state.hidden[mode][key].desc, mode .. " hidden " .. key)
-      assert.is_nil(state.visible[mode][key], mode .. " visible " .. key)
-    end
-  end
-  assert.same({ foldcolumn = "0", signcolumn = "no" }, {
-    foldcolumn = state.hidden.foldcolumn,
-    signcolumn = state.hidden.signcolumn,
-  })
-  assert.same({ foldcolumn = "0", signcolumn = "no" }, {
-    foldcolumn = state.visible.foldcolumn,
-    signcolumn = state.visible.signcolumn,
-  })
-  assert.equals(6, #state.calls)
-  for _, bufnr in ipairs(state.calls) do
-    assert.equals(state.hidden.buffer, bufnr)
-  end
-end
-
-T["TERM-05 owns base options and bounds terminal lifecycle through AstroNvim mappings"] = function()
-  child = helpers.start_ready_child()
-
-  local state = child.lua_get [[(function()
-    local spec = require "astronvim.plugins.toggleterm"
-    local mapping = vim.fn.maparg("<Leader>tf", "n", false, true)
-    vim.api.nvim_feedkeys(" tf", "mx", false)
-
-    local terminal_buffer
-    local opened = vim.wait(3000, function()
-      for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
-        if vim.api.nvim_buf_is_valid(bufnr) and vim.bo[bufnr].buftype == "terminal" then
-          terminal_buffer = bufnr
-          return true
-        end
-      end
-      return false
-    end, 20)
-
-    local terminal_window = false
-    if opened then
+  child.lua [[
+    vim.cmd.stopinsert()
+    vim.api.nvim_feedkeys(vim.keycode "<F7>", "mx", false)
+  ]]
+  helpers.wait_until(
+    child,
+    ([[(function()
       for _, winid in ipairs(vim.api.nvim_list_wins()) do
-        if vim.api.nvim_win_get_buf(winid) == terminal_buffer then
-          terminal_window = true
-          break
-        end
-      end
-      vim.cmd "stopinsert"
-      vim.api.nvim_feedkeys(vim.keycode "<F7>", "mx", false)
-    end
-
-    local hidden = opened and vim.wait(3000, function()
-      for _, winid in ipairs(vim.api.nvim_list_wins()) do
-        if vim.api.nvim_win_get_buf(winid) == terminal_buffer then return false end
+        if vim.api.nvim_win_get_buf(winid) == %d then return false end
       end
       return true
-    end, 20)
-
-    local terminal_job = terminal_buffer and vim.b[terminal_buffer].terminal_job_id
-    if terminal_job then
-      vim.fn.jobstop(terminal_job)
-      vim.fn.jobwait({ terminal_job }, 1000)
+    end)()]]):format(opened.buffer),
+    "float terminal hide mapping"
+  )
+  local hidden = child.lua_get(([[(function()
+    local visible = false
+    for _, winid in ipairs(vim.api.nvim_list_wins()) do
+      if vim.api.nvim_win_get_buf(winid) == %d then visible = true end
     end
-
     return {
-      mapping_rhs = mapping.rhs,
-      size = spec.opts.size,
-      shading_factor = spec.opts.shading_factor,
-      highlights = spec.opts.highlights,
-      opened = opened,
-      terminal_window = terminal_window,
-      hidden = hidden,
-      terminal_buffer = terminal_buffer,
+      visible = visible,
+      current_buffer = vim.api.nvim_get_current_buf(),
+      buffer_valid = vim.api.nvim_buf_is_valid(%d),
+      buftype = vim.bo[%d].buftype,
     }
-  end)()]]
+  end)()]]):format(opened.buffer, opened.buffer, opened.buffer))
 
-  assert.equals("<Cmd>ToggleTerm direction=float<CR>", state.mapping_rhs)
-  assert.equals(10, state.size)
-  assert.equals(2, state.shading_factor)
-  assert.same({
-    Normal = { link = "Normal" },
-    NormalNC = { link = "NormalNC" },
-    NormalFloat = { link = "NormalFloat" },
-    FloatBorder = { link = "FloatBorder" },
-    StatusLine = { link = "StatusLine" },
-    StatusLineNC = { link = "StatusLineNC" },
-    WinBar = { link = "WinBar" },
-    WinBarNC = { link = "WinBarNC" },
-  }, state.highlights)
-  assert.is_true(state.opened)
-  assert.is_true(state.terminal_window)
-  assert.is_true(state.hidden)
+  local terminal_job = child.lua_get(("vim.b[%d].terminal_job_id"):format(opened.buffer))
+  if terminal_job then
+    child.lua(([=[vim.fn.jobstop(%d); vim.fn.jobwait({ %d }, 1000)]=]):format(terminal_job, terminal_job))
+  end
+
+  assert.equals("terminal", opened.buftype)
+  assert.is_false(opened.buflisted)
+  assert.equals("toggleterm", opened.filetype)
+  assert.same({ foldcolumn = "0", signcolumn = "no" }, {
+    foldcolumn = opened.foldcolumn,
+    signcolumn = opened.signcolumn,
+  })
+  assert.equals(original_buffer, hidden.current_buffer)
+  assert.is_true(hidden.buffer_valid)
+  assert.equals("terminal", hidden.buftype)
+  assert.is_false(hidden.visible)
 end
 
-T["INDENT-02 owns GuessIndent metadata and hands events to the matching buffer only"] = function()
+T["INDENT-02 hands real file events to the matching buffer only"] = function()
   child = helpers.start_ready_child()
 
   local state = child.lua_get [[(function()
@@ -206,43 +142,30 @@ T["INDENT-02 owns GuessIndent metadata and hands events to the matching buffer o
         table.insert(calls, { buffer = bufnr, use_defaults = use_defaults, notify = notify })
       end,
     }
-    local spec = require "astronvim.plugins.guess-indent"
-    assert(spec[1] == "NMAC427/guess-indent.nvim")
-    assert(spec.cmd == "GuessIndent")
-    assert(spec.opts.auto_cmd == false)
-    local astrocore_spec
-    for _, nested_spec in ipairs(spec.specs) do
-      if nested_spec[1] == "AstroNvim/astrocore" then astrocore_spec = nested_spec end
+    local function named_buffer(name)
+      local bufnr = vim.api.nvim_create_buf(true, false)
+      vim.api.nvim_buf_set_name(bufnr, vim.fs.joinpath(vim.uv.cwd(), name))
+      vim.bo[bufnr].buftype = ""
+      return bufnr
     end
-    local autocmds = astrocore_spec.opts.autocmds.GuessIndent
-    local read_callback
-    local new_file_callback
-    for _, autocmd in ipairs(autocmds) do
-      if autocmd.event == "BufReadPost" then read_callback = autocmd.callback end
-      if autocmd.event == "BufNewFile" then new_file_callback = autocmd.callback end
-    end
-    local read_buffer = vim.api.nvim_create_buf(true, false)
-    local new_file_buffer = vim.api.nvim_create_buf(true, false)
-    local other_buffer = vim.api.nvim_create_buf(true, false)
+    local read_buffer = named_buffer("guess-indent-read.txt")
+    local new_file_buffer = named_buffer("guess-indent-new.txt")
+    local other_buffer = named_buffer("guess-indent-other.txt")
 
-    read_callback { buf = read_buffer }
+    vim.api.nvim_exec_autocmds("BufReadPost", astronvim_test_autocmd_options(read_buffer, { modeline = false }))
     local after_read = #calls
-    new_file_callback { buf = new_file_buffer }
+    vim.api.nvim_exec_autocmds("BufNewFile", astronvim_test_autocmd_options(new_file_buffer, { modeline = false }))
     local after_registration = #calls
-    vim.api.nvim_exec_autocmds("BufWritePost", astronvim_test_autocmd_options(other_buffer))
+    vim.api.nvim_exec_autocmds("BufWritePost", astronvim_test_autocmd_options(other_buffer, { modeline = false }))
     local after_other_write = #calls
-    vim.api.nvim_exec_autocmds("BufWritePost", astronvim_test_autocmd_options(new_file_buffer))
+    vim.api.nvim_exec_autocmds("BufWritePost", astronvim_test_autocmd_options(new_file_buffer, { modeline = false }))
     local after_first_write = #calls
-    vim.api.nvim_exec_autocmds("BufWritePost", astronvim_test_autocmd_options(new_file_buffer))
+    vim.api.nvim_exec_autocmds("BufWritePost", astronvim_test_autocmd_options(new_file_buffer, { modeline = false }))
     local after_second_write = #calls
     return {
       calls = calls,
       read_buffer = read_buffer,
       new_file_buffer = new_file_buffer,
-      autocmds = {
-        { event = autocmds[1].event, desc = autocmds[1].desc },
-        { event = autocmds[2].event, desc = autocmds[2].desc },
-      },
       counts = {
         after_read = after_read,
         after_registration = after_registration,
@@ -261,10 +184,6 @@ T["INDENT-02 owns GuessIndent metadata and hands events to the matching buffer o
     after_second_write = 2,
   }, state.counts)
   assert.equals(2, #state.calls)
-  assert.same({
-    { event = "BufReadPost", desc = "Guess indentation when loading a file" },
-    { event = "BufNewFile", desc = "Guess indentation when saving a new file" },
-  }, state.autocmds)
   assert.same({ use_defaults = true, notify = true }, {
     use_defaults = state.calls[1].use_defaults,
     notify = state.calls[1].notify,

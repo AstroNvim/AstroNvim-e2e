@@ -75,25 +75,27 @@ T["STARTUP-02 replays startup error notifications before reporting readiness"] =
     child,
     ([[(function()
       local matches = 0
-      for _, notification in ipairs(Snacks.notifier.get_history()) do
-        if notification.msg == %s and notification.level == "error" then matches = matches + 1 end
+      for _, notification in ipairs(vim.g.astronvim_test_error_notifications) do
+        if notification == %s then matches = matches + 1 end
       end
-      return matches == 1 and #require("astronvim.notify").pending() == 0
-    end)()]]):format(vim.inspect(message)),
-    "startup notification delivery"
+      return matches == 1
+    end)()]]):format(vim.inspect(vim.inspect(message))),
+    "public startup notification delivery"
   )
   local delivery = child.lua_get(([[(function()
-    local matches = 0
-    for _, notification in ipairs(Snacks.notifier.get_history()) do
-      if notification.msg == %s and notification.level == "error" then matches = matches + 1 end
+    local function count(notifications)
+      local matches = 0
+      for _, notification in ipairs(notifications) do
+        if notification == %s then matches = matches + 1 end
+      end
+      return matches
     end
     return {
-      matches = matches,
-      pending = #require("astronvim.notify").pending(),
-      paused = require("astronvim.notify").is_paused(),
+      before_ready = count(vim.g.astronvim_test_error_notifications_before_ready),
+      delivered = count(vim.g.astronvim_test_error_notifications),
     }
-  end)()]]):format(vim.inspect(message)))
-  assert.same({ matches = 1, pending = 0, paused = false }, delivery)
+  end)()]]):format(vim.inspect(vim.inspect(message))))
+  assert.same({ before_ready = 1, delivered = 1 }, delivery)
 end
 
 return T

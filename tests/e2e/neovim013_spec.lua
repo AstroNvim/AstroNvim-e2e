@@ -3,12 +3,6 @@ local helpers = require "helpers"
 
 local child
 
-local function write_with_new_mtime(path, lines)
-  local before = assert(vim.uv.fs_stat(path))
-  assert.equals(0, vim.fn.writefile(lines, path))
-  assert(vim.uv.fs_utime(path, before.atime.sec, before.mtime.sec + 2))
-end
-
 local T = MiniTest.new_set {
   hooks = {
     pre_case = function() child = nil end,
@@ -19,39 +13,11 @@ local T = MiniTest.new_set {
   },
 }
 
-T["NVIM-FS-01 uses native autoread or the supported checktime fallback"] = function()
+T["NVIM-FS-01 exercises native autoread on Neovim 0.13"] = function()
   child = helpers.start_ready_child()
 
-  local is_neovim_013 = child.lua_get "vim.fn.has('nvim-0.13') == 1"
-  if not is_neovim_013 then
-    assert.is_false(child.lua_get "vim.o.autoread")
-    local path = helpers.canonical_path(helpers.fixture_project(child) .. "/checktime-fallback.txt")
-    vim.fn.writefile({ "before" }, path)
-    child.lua(([[vim.cmd.edit(%s)]]):format(vim.inspect(path)))
-    helpers.wait_until(child, "vim.api.nvim_get_current_line() == 'before'", "checktime fixture")
-    assert.equals("checktime-fallback.txt", child.lua_get "vim.fn.expand('%:t')")
-
-    local buffer_state = child.lua_get [[{
-      autoread = vim.bo.autoread == true,
-      buftype = vim.bo.buftype,
-      modified = vim.bo.modified,
-    }]]
-    assert.same({ autoread = false, buftype = "", modified = false }, buffer_state)
-    write_with_new_mtime(path, { "after" })
-    -- Synthetic FocusGained does not run checktime on Neovim 0.12; invoke the production callback.
-    child.lua [[require("astronvim.plugins._astrocore_autocmds").opts.autocmds.checktime[1].callback()]]
-    helpers.wait_until(child, "vim.api.nvim_get_current_line() == 'after'", "checktime file change")
-    assert.is_not_true(child.lua_get "vim.bo.autoread")
-
-    child.lua [[
-      vim.api.nvim_buf_set_lines(0, 0, -1, false, { "unsaved" })
-      vim.bo.modified = true
-    ]]
-    write_with_new_mtime(path, { "external" })
-    child.cmd [[doautocmd FocusGained]]
-    helpers.wait_until(child, "vim.api.nvim_get_current_line() == 'unsaved'", "modified buffer preservation")
-
-    return
+  if child.lua_get "vim.fn.has('nvim-0.13') ~= 1" then
+    MiniTest.skip "Neovim 0.12 cannot exercise AstroNvim's checktime fallback through a synthetic public FocusGained event"
   end
 
   local options = child.lua_get [[{

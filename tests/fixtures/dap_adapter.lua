@@ -1,5 +1,6 @@
 local sequence = 0
 local event_log = os.getenv "ASTRONVIM_E2E_DAP_LOG"
+local exit_marker = os.getenv "ASTRONVIM_E2E_DAP_EXIT_MARKER"
 local source_path = os.getenv "ASTRONVIM_E2E_DAP_SOURCE" or vim.fn.getcwd() .. "/plain.txt"
 
 local function read_message()
@@ -47,6 +48,13 @@ end
 
 local function send_event(event, body) send { type = "event", event = event, body = body } end
 
+local function mark_exit()
+  if not exit_marker then return end
+  local file = assert(io.open(exit_marker, "wb"))
+  file:write "adapter-exited\n"
+  file:close()
+end
+
 while true do
   local message = read_message()
   if not message then return end
@@ -87,6 +95,7 @@ while true do
     elseif message.command == "terminate" or message.command == "disconnect" then
       respond(message)
       send_event "terminated"
+      mark_exit()
       return
     else
       log_command("unexpected:" .. message.command)

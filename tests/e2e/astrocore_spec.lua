@@ -659,14 +659,10 @@ T["AUTOCMD-05 creates local parent directories and skips URI write targets"] = f
   child = helpers.start_ready_child()
 
   local path = helpers.fixture_project(child) .. "/autocmd-create-dir/fallback/file.txt"
+  local uri = "https://example.invalid/uri-write-target/file.txt"
   child.lua(([=[
     local path = %s
-    local mkdir = vim.fn.mkdir
-    _G.astronvim_test_mkdir_calls = {}
-    vim.fn.mkdir = function(...)
-      table.insert(_G.astronvim_test_mkdir_calls, { ... })
-      return mkdir(...)
-    end
+    local uri = %s
 
     vim.cmd "enew!"
     vim.api.nvim_buf_set_name(0, path)
@@ -674,33 +670,37 @@ T["AUTOCMD-05 creates local parent directories and skips URI write targets"] = f
     vim.cmd.write()
 
     vim.cmd "enew!"
-    vim.api.nvim_buf_set_name(0, "https://example.invalid/uri-write-target/file.txt")
+    vim.api.nvim_buf_set_name(0, uri)
     vim.api.nvim_exec_autocmds("BufWritePre", astronvim_test_autocmd_options(0))
-    vim.fn.mkdir = mkdir
-  ]=]):format(vim.inspect(path)))
+  ]=]):format(vim.inspect(path), vim.inspect(uri)))
 
   local state = child.lua_get(([=[
-    {
-      calls = _G.astronvim_test_mkdir_calls,
-      directory_exists = vim.fn.isdirectory(%s) == 1,
-      file_exists = vim.fn.filereadable(%s) == 1,
-      contents = vim.fn.readfile(%s),
-    }
-  ]=]):format(vim.inspect(vim.fs.dirname(path)), vim.inspect(path), vim.inspect(path)))
-  assert.equals(1, #state.calls)
+    (function()
+      local uri_path = vim.fs.abspath(%s)
+      local uri_directory = vim.fs.dirname(uri_path)
+      return {
+        directory_exists = vim.fn.isdirectory(%s) == 1,
+        file_exists = vim.fn.filereadable(%s) == 1,
+        contents = vim.fn.readfile(%s),
+        uri_directory_exists = vim.fn.isdirectory(uri_directory) == 1,
+        uri_file_exists = vim.fn.filereadable(uri_path) == 1,
+      }
+    end)()
+  ]=]):format(vim.inspect(uri), vim.inspect(vim.fs.dirname(path)), vim.inspect(path), vim.inspect(path)))
   assert.is_true(state.directory_exists)
   assert.is_true(state.file_exists)
   assert.same({ "created by autocmd" }, state.contents)
+  assert.is_false(state.uri_directory_exists)
+  assert.is_false(state.uri_file_exists)
 end
 
-T["AUTOCMD-10 keeps unrelated buffers unchanged and manages q-close mappings"] = function()
+T["AUTOCMD-10 keeps unrelated buffers unchanged and closes or preserves q windows"] = function()
   child = helpers.start_ready_child()
 
   child.lua 'vim.cmd "help help"'
-  local help_mapping = child.lua_get "vim.fn.maparg('q', 'n', false, true)"
-  assert.equals("<Cmd>close<CR>", help_mapping.rhs)
+  helpers.wait_until(child, "vim.bo.buftype == 'help'", "help buffer")
   child.type_keys "q"
-  helpers.wait_until(child, "#vim.api.nvim_list_wins() == 1", "help close mapping")
+  helpers.wait_until(child, "#vim.api.nvim_list_wins() == 1 and vim.bo.buftype ~= 'help'", "help q close")
 
   child.lua [[
     local target = vim.api.nvim_get_current_buf()
@@ -726,23 +726,26 @@ T["AUTOCMD-10 keeps unrelated buffers unchanged and manages q-close mappings"] =
 
     local nofile = vim.api.nvim_create_buf(false, true)
     vim.bo[nofile].buftype = "nofile"
-    vim.keymap.set("n", "q", "<Cmd>let g:astronvim_test_q_preserved = true<CR>", { buf = nofile })
+    vim.keymap.set("n", "q", function() vim.g.astronvim_test_q_preserved = true end, { buf = nofile })
     vim.api.nvim_win_set_buf(0, nofile)
     vim.api.nvim_exec_autocmds("BufWinEnter", astronvim_test_autocmd_options(nofile))
-    _G.astronvim_test_nofile = {
-      bufnr = nofile,
-      mapping = vim.fn.maparg("q", "n", false, true),
-    }
-    vim.api.nvim_buf_delete(nofile, { force = true })
+    _G.astronvim_test_nofile = nofile
+    vim.g.astronvim_test_q_preserved = false
+  ]]
 
+  child.type_keys "q"
+  helpers.wait_until(child, "vim.g.astronvim_test_q_preserved == true", "preserve nofile q mapping")
+  assert.equals(2, child.lua_get "#vim.api.nvim_list_wins()")
+
+  child.lua [[
+    vim.api.nvim_buf_delete(_G.astronvim_test_nofile, { force = true })
     vim.fn.setqflist { { filename = "plain.txt", lnum = 1, text = "quickfix entry" } }
     vim.cmd.copen()
     vim.api.nvim_exec_autocmds("BufWinEnter", astronvim_test_autocmd_options(vim.api.nvim_get_current_buf()))
-    _G.astronvim_test_quickfix = {
-      bufnr = vim.api.nvim_get_current_buf(),
-      mapping = vim.fn.maparg("q", "n", false, true),
-    }
   ]]
+  assert.is_false(child.lua_get "vim.bo.buflisted")
+  child.type_keys "q"
+  helpers.wait_until(child, "vim.bo.buftype ~= 'quickfix'", "quickfix q close")
 
   local state = child.lua_get [[(function()
     local large = _G.astronvim_test_large_buffer
@@ -760,18 +763,15 @@ T["AUTOCMD-10 keeps unrelated buffers unchanged and manages q-close mappings"] =
         autoformat = vim.b[large.target].autoformat,
         completion = vim.b[large.target].completion,
       },
-      nofile = _G.astronvim_test_nofile,
-      nofile_cache_cleared = vim.g.q_close_windows[_G.astronvim_test_nofile.bufnr] == nil,
-      quickfix = _G.astronvim_test_quickfix,
+      nofile_preserved = vim.g.astronvim_test_q_preserved == true,
+      quickfix_closed = vim.bo.buftype ~= "quickfix",
     }
   end)()]]
 
   assert.same({ list = false, autoformat = false, completion = false }, state.target)
   assert.same({ list = true, autoformat = true, completion = true }, state.large.untouched)
-  assert.equals("<Cmd>let g:astronvim_test_q_preserved = true<CR>", state.nofile.mapping.rhs)
-  assert.is_true(state.nofile_cache_cleared)
-  assert.equals("<Cmd>close<CR>", state.quickfix.mapping.rhs)
-  assert.equals("Close window", state.quickfix.mapping.desc)
+  assert.is_true(state.nofile_preserved)
+  assert.is_true(state.quickfix_closed)
 end
 
 return T
