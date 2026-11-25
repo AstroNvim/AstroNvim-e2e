@@ -18,20 +18,36 @@ local function create_directory(path)
 end
 
 local function copy_directory(source, destination)
+  local source_entry = vim.uv.fs_lstat(source)
+  if not source_entry then error(("Failed to copy fixture project: source is missing: %s"):format(source), 0) end
+  if source_entry.type == "link" then
+    error(("Failed to copy fixture project: source is a symbolic link: %s"):format(source), 0)
+  end
+  if source_entry.type ~= "directory" then
+    error(("Failed to copy fixture project: unsupported source type: %s"):format(source), 0)
+  end
+
   local scanner, scan_error = vim.uv.fs_scandir(source)
   if not scanner then error(("Failed to copy fixture project: %s"):format(scan_error), 0) end
 
   while true do
-    local name, entry_type = vim.uv.fs_scandir_next(scanner)
+    local name = vim.uv.fs_scandir_next(scanner)
     if not name then break end
     local source_path = vim.fs.joinpath(source, name)
     local destination_path = vim.fs.joinpath(destination, name)
-    if entry_type == "directory" then
+    local entry = vim.uv.fs_lstat(source_path)
+    if not entry then
+      error(("Failed to copy fixture project: source entry is missing: %s"):format(source_path), 0)
+    elseif entry.type == "link" then
+      error(("Failed to copy fixture project: source entry is a symbolic link: %s"):format(source_path), 0)
+    elseif entry.type == "directory" then
       create_directory(destination_path)
       copy_directory(source_path, destination_path)
-    else
+    elseif entry.type == "file" then
       local copied, copy_error = vim.uv.fs_copyfile(source_path, destination_path)
       if not copied then error(("Failed to copy fixture project: %s"):format(copy_error), 0) end
+    else
+      error(("Failed to copy fixture project: unsupported source type: %s"):format(source_path), 0)
     end
   end
 end

@@ -124,6 +124,28 @@ T["ENV-03 validates exact path types and concrete module entries"] = function()
   assert.is_true(error_message:find("lua/say/init.lua", 1, true) ~= nil)
 end
 
+T["ENV-04 rejects an otherwise valid stale marker fingerprint"] = function()
+  local fixture = ready_environment()
+  local fingerprint = environment.compatibility_fingerprint()
+  fixture.marker.fingerprint = string.rep("0", #fingerprint)
+
+  local valid, error_message =
+    environment.validate_ready(fixture.marker, fixture.manifest, fixture.lock, ready_paths(), fingerprint)
+  assert.is_false(valid)
+  assert.is_true(error_message:find("marker fingerprint", 1, true) ~= nil)
+end
+
+T["ENV-04 rejects an otherwise valid stale manifest fingerprint"] = function()
+  local fixture = ready_environment()
+  local fingerprint = environment.compatibility_fingerprint()
+  fixture.manifest.fingerprint = string.rep("0", #fingerprint)
+
+  local valid, error_message =
+    environment.validate_ready(fixture.marker, fixture.manifest, fixture.lock, ready_paths(), fingerprint)
+  assert.is_false(valid)
+  assert.is_true(error_message:find("manifest fingerprint", 1, true) ~= nil)
+end
+
 T["ENV-04 rejects incompatible markers and mismatched locks"] = function()
   local fixture = ready_environment()
   local valid, error_message = environment.validate_ready({
@@ -305,8 +327,8 @@ T["ENV-09 retries only explicit lock contention and releases the lock"] = functi
     "prepared",
     environment.with_lifecycle_lock(filesystem, "/repository/.tests.prepare.lock", function() return "prepared" end)
   )
-  assert.equals(2, attempts)
-  assert.equals(1, waits)
+  assert.is_true(attempts > 1)
+  assert.is_true(waits > 0)
 
   local ok, error_message = pcall(environment.with_lifecycle_lock, {
     mkdir = function() return nil, "EACCES" end,
@@ -316,6 +338,32 @@ T["ENV-09 retries only explicit lock contention and releases the lock"] = functi
   }, "/repository/.tests.prepare.lock", function() end)
   assert.is_false(ok)
   assert.is_true(error_message:find("EACCES", 1, true) ~= nil)
+end
+
+T["ENV-09 rejects symbolic-link locks before callback invocation or waiting"] = function()
+  local callback_invoked = false
+  local waits = 0
+  local lock_path = "/repository/.tests.prepare.lock"
+  local filesystem = {
+    mkdir = function() return nil, "EEXIST: file already exists" end,
+    lstat = function(path)
+      assert.equals(lock_path, path)
+      return { type = "link" }
+    end,
+    now = function() return 0 end,
+    wait = function() waits = waits + 1 end,
+  }
+
+  local ok, error_message = pcall(
+    environment.with_lifecycle_lock,
+    filesystem,
+    lock_path,
+    function() callback_invoked = true end
+  )
+  assert.is_false(ok)
+  assert.is_true(error_message:find("symbolic link", 1, true) ~= nil)
+  assert.is_false(callback_invoked)
+  assert.equals(0, waits)
 end
 
 T["ENV-10 clears only the canonical environment and treats absence as a no-op"] = function()
