@@ -220,29 +220,28 @@ T["NEO-08 leaves Neo-tree-local columns behind after returning to the file windo
   assert.equals("3", child.lua_get "vim.wo.foldcolumn")
 end
 
-T["NEO-09 reflects external file changes with watcher or explicit refresh"] = function()
+T["NEO-09 reflects external file changes after explicit refresh"] = function()
   child = helpers.start_ready_child()
   child.type_keys "<Space>e"
   helpers.wait_until(child, neo_tree_visible_expression(), "visible Neo-tree window")
 
   local project = helpers.fixture_project(child)
-  local watcher_enabled = child.lua_get "vim.fn.has('win32') ~= 1"
   local created = "neo-tree-created.txt"
   local renamed = "neo-tree-renamed.txt"
   local created_path = vim.fs.joinpath(project, created)
   local renamed_path = vim.fs.joinpath(project, renamed)
 
   vim.fn.writefile({ "created" }, created_path)
-  if not watcher_enabled then child.type_keys "R" end
+  child.type_keys "R"
   helpers.wait_until(child, neo_tree_contains_expression(created), "Neo-tree create update")
 
   assert.equals(0, vim.fn.rename(created_path, renamed_path))
-  if not watcher_enabled then child.type_keys "R" end
+  child.type_keys "R"
   helpers.wait_until(child, neo_tree_contains_expression(renamed), "Neo-tree rename update")
   helpers.wait_until(child, "not " .. neo_tree_contains_expression(created), "Neo-tree old name removal")
 
   assert.equals(0, vim.fn.delete(renamed_path))
-  if not watcher_enabled then child.type_keys "R" end
+  child.type_keys "R"
   helpers.wait_until(child, "not " .. neo_tree_contains_expression(renamed), "Neo-tree delete update")
 end
 
