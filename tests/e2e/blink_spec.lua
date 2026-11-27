@@ -44,6 +44,7 @@ T["BLINK-E2E-01 accepts a buffer completion through the configured mapping"] = f
   open_buffer_completion()
 
   child.type_keys "<C-n>"
+  helpers.wait_until(child, "require('blink.cmp').get_selected_item() ~= nil", "Blink completion selection")
   child.type_keys "<CR>"
   helpers.wait_until(
     child,
